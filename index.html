@@ -39,6 +39,9 @@ html,body{height:100%;overflow:hidden;background:#0a0711;font-family:-apple-syst
 #notebody{position:absolute;left:0;right:0;bottom:0;padding:26px 28px calc(34px + env(safe-area-inset-bottom));max-height:62%;overflow:auto;}
 #ntitle{font-size:21px;font-weight:500;line-height:1.4;margin-bottom:12px;}
 #ntext{font-size:15px;line-height:1.85;opacity:.92;}
+#status{position:absolute;left:50%;bottom:calc(86px + env(safe-area-inset-bottom));transform:translateX(-50%);font-size:12px;color:#ffd9a0;background:rgba(20,13,24,.85);border:.5px solid rgba(255,190,110,.3);border-radius:10px;padding:7px 14px;opacity:0;transition:opacity .3s;pointer-events:none;backdrop-filter:blur(6px);letter-spacing:.5px;white-space:nowrap;}
+#exp{position:absolute;right:12px;top:calc(56px + env(safe-area-inset-top));width:38px;height:38px;border-radius:10px;background:rgba(20,13,24,.7);border:.5px solid rgba(255,190,110,.3);display:flex;align-items:center;justify-content:center;cursor:pointer;color:#ffd9a0;backdrop-filter:blur(6px);}
+#exp svg{width:17px;height:17px;}
 </style>
 </head>
 <body>
@@ -89,6 +92,8 @@ html,body{height:100%;overflow:hidden;background:#0a0711;font-family:-apple-syst
 <canvas id="gx"></canvas>
 <div id="hint">拖动 · 缩放 · 轻点星球选中,再点降落</div>
 <div id="snd" title="声音开关" aria-label="声音开关"><svg id="sndsvg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg></div>
+<div id="exp" title="导出备份" aria-label="导出备份"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg></div>
+<div id="status"></div>
 <div id="birthtitle"></div>
 <div id="birthsub"></div>
 <div id="card">
@@ -152,10 +157,9 @@ var titles=[
  ['宇宙是我的思想',3,'整片星海就是我的大脑被可视化出来的样子。']
 ];
 function rnd(a,b){return a+Math.random()*(b-a);}
-var stars=titles.map(function(t,i){var c=clusters[t[1]];var ang=rnd(0,6.28),rad=rnd(40,150);
- return {id:i,label:t[0],body:t[2],cl:t[1],x:c.cx+Math.cos(ang)*rad,y:c.cy+Math.sin(ang)*rad,r:rnd(3.4,6.5),col:palette[i%palette.length],ph:rnd(0,6.28),damp:rnd(8,18),scene:scenes[i%scenes.length],born:1,flash:0};});
-var links=[[0,1],[1,2],[2,3],[0,3],[0,13],[1,11],[4,5],[5,6],[6,7],[7,8],[4,8],[8,16],[9,10],[10,11],[11,12],[9,12],[12,1],[13,14],[14,15],[15,16],[13,4],[15,7],[16,8],[3,9],[14,0]];
-var nbr={};stars.forEach(function(s){nbr[s.id]=[];});links.forEach(function(l){nbr[l[0]].push(l[1]);nbr[l[1]].push(l[0]);});
+var stars=[];   // 由 IndexedDB 载入,见 boot()
+var links=[];   // [下标A,下标B],由 boot() 依据存储的连接重建
+var nbr={};     // 下标 -> 邻居下标[]
 var dust=[];for(var i=0;i<90;i++){dust.push({x:rnd(-700,700),y:rnd(-380,380),r:rnd(.4,1.3),a:rnd(.15,.6)});}
 var blooms=[{x:-340,y:-110,r:260,c:'255,170,90'},{x:320,y:160,r:240,c:'255,120,120'},{x:280,y:-140,r:220,c:'255,200,110'},{x:-290,y:200,r:230,c:'255,150,190'}];
 
@@ -163,6 +167,37 @@ var cam={x:0,y:0,zoom:.62,tx:0,ty:0,tz:.62};
 var selected=-1,t0=performance.now();
 var mode='space',diving=false,dive=0,diveTarget=null;
 var birth=null;
+
+/* ===== 真引擎(slice 1):存储 + 向量 + 关联 ===== */
+var SIM_THRESHOLD=0.40, SIM_TOPK=3;   // 实测:无关≤0.19、强相关0.68;0.40 保守起步,觉得连太少就降到~0.33
+/* — 存储层:IndexedDB — */
+var DB=null, DB_NAME='starsea', STORE='notes';
+function dbOpen(){return new Promise(function(res,rej){var r=indexedDB.open(DB_NAME,1);r.onupgradeneeded=function(e){var db=e.target.result;if(!db.objectStoreNames.contains(STORE))db.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});};r.onsuccess=function(){DB=r.result;res(DB);};r.onerror=function(){rej(r.error);};});}
+function dbAll(){return new Promise(function(res,rej){var tx=DB.transaction(STORE,'readonly'),st=tx.objectStore(STORE),out=[];st.openCursor().onsuccess=function(e){var c=e.target.result;if(c){out.push(c.value);c.continue();}else res(out);};tx.onerror=function(){rej(tx.error);};});}
+function dbPut(n){return new Promise(function(res,rej){var rq=DB.transaction(STORE,'readwrite').objectStore(STORE).put(n);rq.onsuccess=function(){res(rq.result);};rq.onerror=function(){rej(rq.error);};});}
+/* — embedding 层:transformers.js(本地;中文模型走 hf-mirror 绕 GFW)。藏在 embed() 后面,以后可整段换云 — */
+var _embedder=null,_embedLoading=null;
+function loadEmbedder(){
+ if(_embedder)return Promise.resolve(_embedder);
+ if(_embedLoading)return _embedLoading;
+ _embedLoading=import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2').then(function(mod){
+  mod.env.allowLocalModels=false;   // 默认 huggingface.co(带 CORS);若被墙改自托管模型
+  return mod.pipeline('feature-extraction','Xenova/paraphrase-multilingual-MiniLM-L12-v2',{quantized:true,progress_callback:function(p){if(p&&p.status==='progress'&&p.file&&/\.onnx|\.bin/.test(p.file)){setStatus('引擎首次加载 '+Math.round(p.progress||0)+'%');}}});
+ }).then(function(ex){_embedder=ex;setStatus('');return ex;});
+ return _embedLoading;
+}
+function embed(text){return loadEmbedder().then(function(ex){return ex(text,{pooling:'mean',normalize:true});}).then(function(out){return Array.from(out.data);});}
+/* — 关联层:纯函数 cosine(向量已归一化,点积即余弦)+ 阈值 + topK — */
+function dot(a,b){var s=0;for(var i=0;i<a.length;i++)s+=a[i]*b[i];return s;}
+function connectTo(vec){var sc=[];for(var i=0;i<stars.length;i++){if(!stars[i].vec)continue;sc.push({i:i,s:dot(vec,stars[i].vec)});}sc.sort(function(a,b){return b.s-a.s;});var out=[];for(var k=0;k<sc.length&&out.length<SIM_TOPK;k++){if(sc[k].s>=SIM_THRESHOLD)out.push(sc[k].i);}return out;}
+function placeNear(conns){if(conns.length){var cx=0,cy=0;conns.forEach(function(i){cx+=stars[i].x;cy+=stars[i].y;});cx/=conns.length;cy/=conns.length;var a=rnd(0,6.28),r=rnd(45,95);return{x:cx+Math.cos(a)*r,y:cy+Math.sin(a)*r};}return{x:rnd(-260,260),y:rnd(-190,190)};}
+/* — 由存储记录造一颗星(渲染 id = 数组下标,dbId 另存)— */
+function makeStar(n,idx){return{id:idx,dbId:n.id,label:(n.text||'').replace(/\s+/g,' ').trim().slice(0,14),body:n.text,vec:n.vec,x:n.x,y:n.y,r:rnd(3.6,6.2),col:palette[idx%palette.length],ph:rnd(0,6.28),damp:rnd(8,18),scene:scenes[idx%scenes.length],born:1,flash:0};}
+/* — 启动:从 IndexedDB 载入,重建星与连线;并预热引擎 — */
+function boot(){return dbOpen().then(dbAll).then(function(notes){notes.sort(function(a,b){return(a.created||0)-(b.created||0);});var idmap={};notes.forEach(function(n,i){stars.push(makeStar(n,i));nbr[i]=[];idmap[n.id]=i;});notes.forEach(function(n,i){(n.conns||[]).forEach(function(did){var j=idmap[did];if(j!=null&&j!==i){links.push([i,j]);if(nbr[i].indexOf(j)<0)nbr[i].push(j);if(nbr[j].indexOf(i)<0)nbr[j].push(i);}});});hint.textContent=notes.length?'拖动 · 缩放 · 轻点星球,再点降落':'敲下第一个想法,点亮第一颗星';loadEmbedder().catch(function(){});}).catch(function(e){console.error('boot failed',e);});}
+function setStatus(msg){var el=document.getElementById('status');if(!el)return;el.textContent=msg||'';el.style.opacity=msg?'1':'0';}
+function exportNotes(){dbAll().then(function(notes){var blob=new Blob([JSON.stringify(notes)],{type:'application/json'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='starsea-backup.json';document.body.appendChild(a);a.click();a.remove();});}
+boot();
 
 function w2s(x,y){return {x:(x-cam.x)*cam.zoom+W/2,y:(y-cam.y)*cam.zoom+H/2};}
 function s2w(x,y){return {x:(x-W/2)/cam.zoom+cam.x,y:(y-H/2)/cam.zoom+cam.y};}
@@ -245,18 +280,29 @@ cv.addEventListener('touchstart',function(e){if(e.touches.length===2){pinchD=Mat
 cv.addEventListener('touchmove',function(e){if(e.touches.length===2&&mode==='space'&&!birth){var d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);if(pinchD>0){cam.tz=Math.max(.32,Math.min(2.2,cam.tz*(d/pinchD)));cam.zoom=cam.tz;}pinchD=d;if(e.cancelable)e.preventDefault();}},{passive:false});
 cv.addEventListener('wheel',function(e){if(busy())return;e.preventDefault();var p=relPos(e);var w=s2w(p.x,p.y);var f=Math.exp(-e.deltaY*.0012);cam.tz=Math.max(.32,Math.min(2.2,cam.tz*f));cam.zoom=cam.tz;var w2=s2w(p.x,p.y);cam.tx+=w.x-w2.x;cam.ty+=w.y-w2.y;cam.x=cam.tx;cam.y=cam.ty;},{passive:false});
 
-function birthStarFrom(txt){initAudio();deselect();var cidx=Math.floor(rnd(0,4));var c=clusters[cidx];var ang=rnd(0,6.28),rad=rnd(60,130);var id=stars.length;
- var s={id:id,label:txt.slice(0,14),body:txt,cl:cidx,x:c.cx+Math.cos(ang)*rad,y:c.cy+Math.sin(ang)*rad,r:rnd(4,6.2),col:palette[id%palette.length],ph:rnd(0,6.28),damp:rnd(8,18),scene:scenes[id%scenes.length],born:0,flash:0};
- stars.push(s);nbr[id]=[];
- var sameCl=stars.filter(function(o){return o.id!==id&&o.cl===cidx;});sameCl.sort(function(a,b){return Math.hypot(a.x-s.x,a.y-s.y)-Math.hypot(b.x-s.x,b.y-s.y);});
- var targets=sameCl.slice(0,Math.min(3,Math.max(2,sameCl.length))).map(function(o){return o.id;});
- if(targets.length<2){var any=stars.filter(function(o){return o.id!==id;});any.sort(function(a,b){return Math.hypot(a.x-s.x,a.y-s.y)-Math.hypot(b.x-s.x,b.y-s.y);});targets=any.slice(0,2).map(function(o){return o.id;});}
- targets.forEach(function(tg){links.push([id,tg]);nbr[id].push(tg);nbr[tg].push(id);});
- addbar.style.opacity=0;addbar.style.pointerEvents='none';hint.style.opacity=0;
- cam.tx=s.x;cam.ty=s.y;cam.tz=1.0;
- birth={star:s,x:s.x,y:s.y,phase:'gather',p:0,dim:0,wave:0,targets:targets,linkP:0,drawLinks:false,lit:[]};}
+var adding=false;
+function birthStarFrom(txt){
+ if(adding)return; adding=true; initAudio(); deselect();
+ setStatus('正在理解这条想法…');
+ embed(txt).then(function(v){return v;},function(){return null;}).then(function(vec){
+  var conns=vec?connectTo(vec):[];
+  var idx=stars.length, pos=placeNear(conns);
+  var note={text:txt,vec:vec,conns:conns.map(function(i){return stars[i].dbId;}),x:pos.x,y:pos.y,created:Date.now()};
+  return dbPut(note).then(function(d){return d;},function(){return idx;}).then(function(dbId){
+   note.id=dbId; var s=makeStar(note,idx); s.born=0;
+   stars.push(s); nbr[idx]=[];
+   conns.forEach(function(j){links.push([idx,j]);nbr[idx].push(j);if(nbr[j].indexOf(idx)<0)nbr[j].push(idx);});
+   if(vec){setStatus('');}else{setStatus('引擎没连上,这颗星先单独存下了');setTimeout(function(){setStatus('');},2600);}
+   addbar.style.opacity=0;addbar.style.pointerEvents='none';hint.style.opacity=0;
+   cam.tx=s.x;cam.ty=s.y;cam.tz=1.0;
+   birth={star:s,x:s.x,y:s.y,phase:'gather',p:0,dim:0,wave:0,targets:conns,linkP:0,drawLinks:false,lit:[]};
+   adding=false;
+  });
+ });
+}
 document.getElementById('addbtn').addEventListener('click',function(){var v=document.getElementById('newnote').value.trim();if(v){birthStarFrom(v);document.getElementById('newnote').value='';document.getElementById('newnote').blur();}});
 document.getElementById('newnote').addEventListener('keydown',function(e){if(e.key==='Enter'){var v=this.value.trim();if(v){birthStarFrom(v);this.value='';this.blur();}}});
+document.getElementById('exp').addEventListener('click',function(e){e.stopPropagation();exportNotes();});
 })();
 </script>
 </body>
