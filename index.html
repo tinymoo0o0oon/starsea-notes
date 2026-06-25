@@ -42,6 +42,49 @@ html,body{height:100%;overflow:hidden;background:#0a0711;font-family:-apple-syst
 </style>
 </head>
 <body>
+<div id="gate">
+  <div id="gatebox">
+    <div id="gatestar">星</div>
+    <div id="gatetitle">星海</div>
+    <div id="gatesub">输入口令进入</div>
+    <input id="gatein" type="password" inputmode="text" autocomplete="off" autocapitalize="off" placeholder="口令" />
+    <button id="gatebtn">进 入</button>
+    <div id="gateerr">口令不对</div>
+  </div>
+</div>
+<style>
+#gate{position:fixed;inset:0;z-index:9999;background:radial-gradient(120% 120% at 30% 20%,#1c1030 0%,#0a0711 60%,#060409 100%);display:flex;align-items:center;justify-content:center;transition:opacity .5s;}
+#gatebox{text-align:center;padding:0 34px;width:100%;max-width:340px;}
+#gatestar{font-size:46px;color:#ffe6b0;text-shadow:0 4px 40px rgba(255,180,90,.7);margin-bottom:6px;}
+#gatetitle{font-size:20px;color:#ffe6b0;letter-spacing:4px;margin-bottom:6px;}
+#gatesub{font-size:12px;color:#c89a6a;letter-spacing:2px;margin-bottom:26px;}
+#gatein{width:100%;background:rgba(20,13,24,.82);border:.5px solid rgba(255,190,110,.35);border-radius:12px;padding:13px 16px;color:#ffe9bd;font-size:16px;outline:none;text-align:center;font-family:inherit;letter-spacing:2px;}
+#gatein::placeholder{color:#9a7a55;letter-spacing:1px;}
+#gatebtn{width:100%;margin-top:12px;background:rgba(255,180,110,.16);border:.5px solid rgba(255,190,110,.45);border-radius:12px;color:#ffd9a0;font-size:15px;padding:13px 0;cursor:pointer;font-family:inherit;letter-spacing:3px;}
+#gateerr{height:18px;margin-top:12px;font-size:12px;color:#e0857a;opacity:0;transition:opacity .2s;letter-spacing:1px;}
+</style>
+<script>
+(function(){
+  var KEY='starsea_unlocked_v1';
+  var HASH='89bc4ec7dabf487a6602cd0fbb1902b422322ae98ae75bd5ccca229b65788551';
+  var gate=document.getElementById('gate');
+  function open(){gate.style.opacity='0';setTimeout(function(){gate.style.display='none';},520);}
+  if(localStorage.getItem(KEY)==='1'){gate.style.display='none';return;}
+  var inp=document.getElementById('gatein'),btn=document.getElementById('gatebtn'),err=document.getElementById('gateerr');
+  async function sha256(s){var b=new TextEncoder().encode(s);var h=await crypto.subtle.digest('SHA-256',b);return Array.from(new Uint8Array(h)).map(function(x){return x.toString(16).padStart(2,'0');}).join('');}
+  async function check(){
+    var v=(inp.value||'').trim();
+    if(!v)return;
+    var h=await sha256(v);
+    if(h===HASH){localStorage.setItem(KEY,'1');open();}
+    else{err.style.opacity='1';inp.value='';inp.focus();}
+  }
+  btn.addEventListener('click',check);
+  inp.addEventListener('keydown',function(e){if(e.key==='Enter')check();});
+  inp.addEventListener('input',function(){err.style.opacity='0';});
+  setTimeout(function(){inp.focus();},200);
+})();
+</script>
 <div id="wrap">
 <canvas id="gx"></canvas>
 <div id="hint">拖动 · 缩放 · 轻点星球选中,再点降落</div>
