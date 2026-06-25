@@ -178,6 +178,10 @@ var cam={x:0,y:0,zoom:.62,tx:0,ty:0,tz:.62};
 var selected=-1,t0=performance.now();
 var mode='space',diving=false,dive=0,diveTarget=null;
 var birth=null;
+/* — 开机入库的语音星排队播诞生动画(电影模式):一次一颗,settle 后自动接下一颗 — */
+var birthQ=[];
+function pumpBirth(){if(birth||adding||!birthQ.length)return;var b=birthQ.shift();startBirthCine(b.star,b.targets);}
+function startBirthCine(s,targets){initAudio();s.pending=false;addbar.style.opacity=0;addbar.style.pointerEvents='none';hint.style.opacity=0;cam.tx=s.x;cam.ty=s.y;cam.tz=1.0;birth={star:s,x:s.x,y:s.y,phase:'gather',p:0,dim:0,wave:0,targets:targets||[],linkP:0,drawLinks:false,lit:[]};}
 
 /* ===== 真引擎(slice 1):存储 + 向量 + 关联 ===== */
 var SIM_THRESHOLD=0.40, SIM_TOPK=3;   // 实测:无关≤0.19、强相关0.68;0.40 保守起步,觉得连太少就降到~0.33
@@ -185,8 +189,8 @@ var SIM_THRESHOLD=0.40, SIM_TOPK=3;   // 实测:无关≤0.19、强相关0.68;0.
 var SYNC_URL='https://starsea-sync.faym889.workers.dev', SYNC_WT='a137e527a079c9c4', SYNC_INBOX='63b13477f1fb57c42b44ad2e';
 function syncPush(){try{dbAll().then(function(notes){fetch(SYNC_URL+'?t='+SYNC_WT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(notes)}).catch(function(){});},function(){});}catch(e){}}
 /* — 收件箱:打开时拉 Plaud 语音笔记,本地入库成星(静默,无诞生动画);以 IndexedDB 真实数据去重(srcId+文本兜底),没真落库就会下次重拉,不会永久丢 — */
-function ingestOne(it){var txt=(it.text||'').trim();if(!txt)return Promise.resolve();return embed(txt).then(function(v){return v;},function(){return null;}).then(function(vec){var conns=vec?connectTo(vec):[];var idx=stars.length,pos=placeNear(conns);var note={text:txt,vec:vec,conns:conns.map(function(i){return stars[i].dbId;}),x:pos.x,y:pos.y,created:Date.now(),source:'plaud',srcId:it.id};return dbPut(note).then(function(d){return d;},function(){return idx;}).then(function(dbId){note.id=dbId;stars.push(makeStar(note,idx));rebuildGraph();});});}
-function ingestInbox(){return dbAll().then(function(have){var bySrc={},byTxt={};have.forEach(function(n){if(!n)return;if(n.srcId)bySrc[n.srcId]=1;if(n.text)byTxt[n.text.trim()]=1;});return fetch(SYNC_URL+'/inbox?t='+SYNC_INBOX,{cache:'no-store'}).then(function(r){return r.ok?r.json():[];}).then(function(items){if(!items||!items.length)return;var fresh=items.filter(function(it){return it&&it.id&&!bySrc[it.id]&&!byTxt[(it.text||'').trim()];});if(!fresh.length)return;setStatus('收到 '+fresh.length+' 条语音笔记…');return fresh.reduce(function(p,it){return p.then(function(){return ingestOne(it);});},Promise.resolve()).then(function(){hint.textContent='拖动 · 缩放 · 轻点星球,再点降落';setStatus('');syncPush();});});}).catch(function(){});}
+function ingestOne(it,mode){var txt=(it.text||'').trim();if(!txt)return Promise.resolve();return embed(txt).then(function(v){return v;},function(){return null;}).then(function(vec){var conns=vec?connectTo(vec):[];var idx=stars.length,pos=placeNear(conns);var note={text:txt,vec:vec,conns:conns.map(function(i){return stars[i].dbId;}),x:pos.x,y:pos.y,created:Date.now(),source:'plaud',srcId:it.id};return dbPut(note).then(function(d){return d;},function(){return idx;}).then(function(dbId){note.id=dbId;var s=makeStar(note,idx);if(mode==='cine'){s.born=0;s.pending=1;stars.push(s);rebuildGraph();birthQ.push({star:s,targets:conns});pumpBirth();}else if(mode==='light'){s.born=0;s.flash=1;stars.push(s);rebuildGraph();initAudio();piano(noteScale[idx%noteScale.length],.1);}else{stars.push(s);rebuildGraph();}});});}
+function ingestInbox(){return dbAll().then(function(have){var bySrc={},byTxt={};have.forEach(function(n){if(!n)return;if(n.srcId)bySrc[n.srcId]=1;if(n.text)byTxt[n.text.trim()]=1;});return fetch(SYNC_URL+'/inbox?t='+SYNC_INBOX,{cache:'no-store'}).then(function(r){return r.ok?r.json():[];}).then(function(items){if(!items||!items.length)return;var fresh=items.filter(function(it){return it&&it.id&&!bySrc[it.id]&&!byTxt[(it.text||'').trim()];});if(!fresh.length)return;var mode=fresh.length<=2?'cine':'light';setStatus('收到 '+fresh.length+' 条语音笔记…');return fresh.reduce(function(p,it){return p.then(function(){return ingestOne(it,mode);});},Promise.resolve()).then(function(){hint.textContent='拖动 · 缩放 · 轻点星球,再点降落';setStatus('');syncPush();});});}).catch(function(){});}
 /* — 存储层:IndexedDB — */
 var DB=null, DB_NAME='starsea', STORE='notes';
 function dbOpen(){return new Promise(function(res,rej){var r=indexedDB.open(DB_NAME,1);r.onupgradeneeded=function(e){var db=e.target.result;if(!db.objectStoreNames.contains(STORE))db.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});};r.onsuccess=function(){DB=r.result;res(DB);};r.onerror=function(){rej(r.error);};});}
@@ -241,16 +245,16 @@ function draw(now){
  if(birth&&birth.drawLinks){var bc=w2s(birth.x,birth.y);birth.targets.forEach(function(tg,i){var st=stars[tg];var pp=w2s(st.x,st.y);var prog=Math.max(0,Math.min(1,(birth.linkP-i*.34)/.55));if(prog<=0)return;var ex=bc.x+(pp.x-bc.x)*prog,ey=bc.y+(pp.y-bc.y)*prog;ctx.globalAlpha=.75;ctx.strokeStyle='rgba(255,215,150,.9)';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(bc.x,bc.y);ctx.lineTo(ex,ey);ctx.stroke();ctx.fillStyle='#fff0c8';ctx.beginPath();ctx.arc(ex,ey,2.4,0,6.28);ctx.fill();ctx.globalAlpha=1;if(prog>=1&&!birth.lit[i]){birth.lit[i]=true;st.flash=1;piano(noteScale[Math.min(i,noteScale.length-1)],.18);}});}
 
  var drawn=[];
- stars.forEach(function(s){if(birth&&birth.star===s&&birth.phase!=='settle'&&birth.phase!=='link')return;
+ stars.forEach(function(s){if(s.pending)return;if(birth&&birth.star===s&&birth.phase!=='settle'&&birth.phase!=='link')return;
   var sw=Math.sin(t*s.damp*.1+s.ph)*7,sv=Math.cos(t*s.damp*.08+s.ph)*6;var wx=s.x+sw,wy=s.y+sv;
   if(birth&&birth.wave>0&&birth.star!==s){var ddx=s.x-birth.x,ddy=s.y-birth.y,dd=Math.sqrt(ddx*ddx+ddy*ddy)||1;var push=birth.wave*60/Math.max(60,dd);wx+=ddx/dd*push;wy+=ddy/dd*push;}
-  var p=w2s(wx,wy);var tw=.7+.3*Math.sin(t*2+s.ph);if(s.flash>0)s.flash=Math.max(0,s.flash-.02);
+  var p=w2s(wx,wy);var tw=.7+.3*Math.sin(t*2+s.ph);if(s.flash>0)s.flash=Math.max(0,s.flash-.02);if(s.born<1&&!(birth&&birth.star===s))s.born=Math.min(1,s.born+.03);
   var sel=s.id===act;var dim=act>=0&&!sel&&nbr[act].indexOf(s.id)<0?.3:1;dim*=(1-dimGlobal*.7);
-  var rr=s.r*cam.zoom*(sel?1.6:1)*(1+s.flash*.6);
+  var rr=s.r*cam.zoom*(sel?1.6:1)*(1+s.flash*.6)*(.4+.6*s.born);
   var glow=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,rr*5);glow.addColorStop(0,s.col);glow.addColorStop(.25,s.col);glow.addColorStop(1,'rgba(0,0,0,0)');
-  ctx.globalAlpha=Math.min(1,(sel?.95:.5)*tw*dim+s.flash);ctx.fillStyle=glow;ctx.beginPath();ctx.arc(p.x,p.y,rr*5,0,6.28);ctx.fill();
-  ctx.globalAlpha=Math.min(1,dim+s.flash);ctx.fillStyle='#fff7e2';ctx.beginPath();ctx.arc(p.x,p.y,rr,0,6.28);ctx.fill();
-  if(s.source==='plaud'){ctx.globalAlpha=Math.min(1,dim)*(.55+.25*Math.sin(t*2+s.ph));ctx.strokeStyle='rgba(150,220,255,.9)';ctx.lineWidth=1.1;ctx.beginPath();ctx.arc(p.x,p.y,rr+3.5,0,6.28);ctx.stroke();ctx.globalAlpha=1;}
+  ctx.globalAlpha=Math.min(1,(sel?.95:.5)*tw*dim*s.born+s.flash);ctx.fillStyle=glow;ctx.beginPath();ctx.arc(p.x,p.y,rr*5,0,6.28);ctx.fill();
+  ctx.globalAlpha=Math.min(1,dim*s.born+s.flash);ctx.fillStyle='#fff7e2';ctx.beginPath();ctx.arc(p.x,p.y,rr,0,6.28);ctx.fill();
+  if(s.source==='plaud'){ctx.globalAlpha=Math.min(1,dim*s.born)*(.55+.25*Math.sin(t*2+s.ph));ctx.strokeStyle='rgba(150,220,255,.9)';ctx.lineWidth=1.1;ctx.beginPath();ctx.arc(p.x,p.y,rr+3.5,0,6.28);ctx.stroke();ctx.globalAlpha=1;}
   if(sel){ctx.globalAlpha=.5+.3*Math.sin(t*4);ctx.strokeStyle='rgba(255,230,180,.8)';ctx.lineWidth=1;ctx.beginPath();ctx.arc(p.x,p.y,rr+5,0,6.28);ctx.stroke();ctx.globalAlpha=1;}
   s._sx=p.x;s._sy=p.y;s._sr=rr;s._dim=dim;drawn.push(s);});
  ctx.globalAlpha=1;ctx.font='12px -apple-system,sans-serif';ctx.textAlign='center';
@@ -269,7 +273,7 @@ function stepBirth(t){
  else if(b.phase==='ignite'){b.p+=.018;var k=ease(Math.min(1,b.p));var R=Math.max(W,H)*(.12+k*.9);var ig=ctx.createRadialGradient(c.x,c.y,0,c.x,c.y,R);ig.addColorStop(0,'rgba(255,255,245,'+(.95*(1-k*.3))+')');ig.addColorStop(.18,'rgba(255,225,160,'+(.9*(1-k*.4))+')');ig.addColorStop(.5,'rgba(255,150,90,'+(.5*(1-k))+')');ig.addColorStop(1,'rgba(255,120,80,0)');ctx.fillStyle=ig;ctx.beginPath();ctx.arc(c.x,c.y,R,0,6.28);ctx.fill();ctx.globalAlpha=(1-k)*.8;ctx.strokeStyle='rgba(255,230,180,.9)';ctx.lineWidth=3*(1-k)+1;ctx.beginPath();ctx.arc(c.x,c.y,R*.7,0,6.28);ctx.stroke();ctx.globalAlpha=1;b.wave=Math.max(0,(1-b.p)*1.0);if(b.p>=1){b.phase='name';b.p=0;b.wave=0;bTitle.textContent=b.star.label;bTitle.style.opacity=1;bSub.textContent='一颗新星诞生';bSub.style.opacity=.85;}}
  else if(b.phase==='name'){b.p+=.012;var pr=40+Math.sin(t*2)*6;var pg=ctx.createRadialGradient(c.x,c.y,0,c.x,c.y,pr);pg.addColorStop(0,'rgba(255,248,225,.95)');pg.addColorStop(.4,'rgba(255,210,150,.7)');pg.addColorStop(1,'rgba(255,180,110,0)');ctx.fillStyle=pg;ctx.beginPath();ctx.arc(c.x,c.y,pr,0,6.28);ctx.fill();if(b.p>=1){b.phase='link';b.p=0;b.linkP=0;b.drawLinks=true;b.star.born=1;bTitle.style.opacity=0;bSub.style.opacity=0;selectStar(b.star.id,true);}}
  else if(b.phase==='link'){b.linkP+=.016;var pr2=22+Math.sin(t*3)*4;var pg2=ctx.createRadialGradient(c.x,c.y,0,c.x,c.y,pr2);pg2.addColorStop(0,'rgba(255,248,225,.9)');pg2.addColorStop(1,'rgba(255,180,110,0)');ctx.fillStyle=pg2;ctx.beginPath();ctx.arc(c.x,c.y,pr2,0,6.28);ctx.fill();if(b.linkP>=b.targets.length*.34+.7){b.phase='settle';b.p=0;}}
- else if(b.phase==='settle'){b.p+=.013;b.dim=Math.max(0,.9*(1-b.p));var sr=22*(1-ease(b.p))+b.star.r*cam.zoom*ease(b.p);var sg=ctx.createRadialGradient(c.x,c.y,0,c.x,c.y,Math.max(sr,1)*4);sg.addColorStop(0,b.star.col);sg.addColorStop(.3,b.star.col);sg.addColorStop(1,'rgba(0,0,0,0)');ctx.globalAlpha=(1-b.p)*.8;ctx.fillStyle=sg;ctx.beginPath();ctx.arc(c.x,c.y,Math.max(sr,1)*4,0,6.28);ctx.fill();ctx.globalAlpha=1;if(b.p>=1){birth=null;addbar.style.opacity=1;addbar.style.pointerEvents='auto';}}
+ else if(b.phase==='settle'){b.p+=.013;b.dim=Math.max(0,.9*(1-b.p));var sr=22*(1-ease(b.p))+b.star.r*cam.zoom*ease(b.p);var sg=ctx.createRadialGradient(c.x,c.y,0,c.x,c.y,Math.max(sr,1)*4);sg.addColorStop(0,b.star.col);sg.addColorStop(.3,b.star.col);sg.addColorStop(1,'rgba(0,0,0,0)');ctx.globalAlpha=(1-b.p)*.8;ctx.fillStyle=sg;ctx.beginPath();ctx.arc(c.x,c.y,Math.max(sr,1)*4,0,6.28);ctx.fill();ctx.globalAlpha=1;if(b.p>=1){birth=null;if(birthQ.length){pumpBirth();}else{addbar.style.opacity=1;addbar.style.pointerEvents='auto';}}}
 }
 
 function pick(mx,my){var best=-1,bd=1e9;stars.forEach(function(s){if(s._sx==null)return;var dx=s._sx-mx,dy=s._sy-my;var d=dx*dx+dy*dy;var hit=Math.max(20,s._sr+16);if(d<hit*hit&&d<bd){bd=d;best=s.id;}});return best;}
