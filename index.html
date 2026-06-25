@@ -195,8 +195,8 @@ function dot(a,b){var s=0;for(var i=0;i<a.length;i++)s+=a[i]*b[i];return s;}
 function connectTo(vec){var sc=[];for(var i=0;i<stars.length;i++){if(!stars[i].vec)continue;sc.push({i:i,s:dot(vec,stars[i].vec)});}sc.sort(function(a,b){return b.s-a.s;});var out=[];for(var k=0;k<sc.length&&out.length<SIM_TOPK;k++){if(sc[k].s>=SIM_THRESHOLD)out.push(sc[k].i);}return out;}
 function placeNear(conns){if(conns.length){var cx=0,cy=0;conns.forEach(function(i){cx+=stars[i].x;cy+=stars[i].y;});cx/=conns.length;cy/=conns.length;var a=rnd(0,6.28),r=rnd(45,95);return{x:cx+Math.cos(a)*r,y:cy+Math.sin(a)*r};}return{x:rnd(-260,260),y:rnd(-190,190)};}
 /* — 由存储记录造一颗星(渲染 id = 数组下标,dbId 另存)— */
-/* 标题 = 取第一句话:先切到句末标点,过长再退到逗号,真超长才截断 */
-function makeTitle(text){var t=(text||'').replace(/\s+/g,' ').trim();if(!t)return'';var m=t.split(/[。！？!?…\n]/)[0].trim()||t;if(m.length>16){var m2=m.split(/[,，、;；]/)[0].trim();if(m2.length>=5&&m2.length<=16)m=m2;}if(m.length>18)m=m.slice(0,18)+'…';return m;}
+/* 标题 = 切到第一个自然边界(空格/换行/句读,谁先用谁),贴合"标题 空格 正文"的写法;太短则回退全文 */
+function makeTitle(text){var t=(text||'').replace(/\r/g,'').trim();if(!t)return'';var m=t.split(/[\s。！？!?…，,、;；]+/)[0];if(m.length<4)m=t.replace(/\s+/g,' ');if(m.length>20)m=m.slice(0,20)+'…';return m;}
 function makeStar(n,idx){return{id:idx,dbId:n.id,label:makeTitle(n.text),body:n.text,vec:n.vec,x:n.x,y:n.y,r:rnd(3.6,6.2),col:palette[idx%palette.length],ph:rnd(0,6.28),damp:rnd(8,18),scene:scenes[idx%scenes.length],born:1,flash:0};}
 /* — 启动:从 IndexedDB 载入,重建星与连线;并预热引擎 — */
 function boot(){return dbOpen().then(dbAll).then(function(notes){notes.sort(function(a,b){return(a.created||0)-(b.created||0);});var idmap={};notes.forEach(function(n,i){stars.push(makeStar(n,i));nbr[i]=[];idmap[n.id]=i;});notes.forEach(function(n,i){(n.conns||[]).forEach(function(did){var j=idmap[did];if(j!=null&&j!==i){links.push([i,j]);if(nbr[i].indexOf(j)<0)nbr[i].push(j);if(nbr[j].indexOf(i)<0)nbr[j].push(i);}});});hint.textContent=notes.length?'拖动 · 缩放 · 轻点星球,再点降落':'敲下第一个想法,点亮第一颗星';loadEmbedder().catch(function(){});syncPush();}).catch(function(e){console.error('boot failed',e);});}
