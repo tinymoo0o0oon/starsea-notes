@@ -182,8 +182,11 @@ var birth=null;
 /* ===== 真引擎(slice 1):存储 + 向量 + 关联 ===== */
 var SIM_THRESHOLD=0.40, SIM_TOPK=3;   // 实测:无关≤0.19、强相关0.68;0.40 保守起步,觉得连太少就降到~0.33
 /* — 调试同步(开发期):每次变更静默推全量到自己的 Cloudflare,只能写、读需另一把 token。原生版会拆掉 — */
-var SYNC_URL='https://starsea-sync.faym889.workers.dev', SYNC_WT='a137e527a079c9c4';
+var SYNC_URL='https://starsea-sync.faym889.workers.dev', SYNC_WT='a137e527a079c9c4', SYNC_INBOX='63b13477f1fb57c42b44ad2e';
 function syncPush(){try{dbAll().then(function(notes){fetch(SYNC_URL+'?t='+SYNC_WT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(notes)}).catch(function(){});},function(){});}catch(e){}}
+/* — 收件箱:打开时拉 Plaud 语音笔记,本地入库成星(静默,无诞生动画);按 id 去重,不重复入库 — */
+function ingestOne(it){var txt=(it.text||'').trim();if(!txt)return Promise.resolve();return embed(txt).then(function(v){return v;},function(){return null;}).then(function(vec){var conns=vec?connectTo(vec):[];var idx=stars.length,pos=placeNear(conns);var note={text:txt,vec:vec,conns:conns.map(function(i){return stars[i].dbId;}),x:pos.x,y:pos.y,created:Date.now(),source:'plaud'};return dbPut(note).then(function(d){return d;},function(){return idx;}).then(function(dbId){note.id=dbId;stars.push(makeStar(note,idx));rebuildGraph();});});}
+function ingestInbox(){var seen;try{seen=JSON.parse(localStorage.getItem('starsea_ingested')||'[]');}catch(e){seen=[];}var seic={};seen.forEach(function(id){seic[id]=1;});return fetch(SYNC_URL+'/inbox?t='+SYNC_INBOX,{cache:'no-store'}).then(function(r){return r.ok?r.json():[];}).then(function(items){if(!items||!items.length)return;var fresh=items.filter(function(it){return it&&it.id&&!seic[it.id];});if(!fresh.length)return;setStatus('收到 '+fresh.length+' 条语音笔记…');return fresh.reduce(function(p,it){return p.then(function(){return ingestOne(it);});},Promise.resolve()).then(function(){fresh.forEach(function(it){seen.push(it.id);});try{localStorage.setItem('starsea_ingested',JSON.stringify(seen.slice(-800)));}catch(e){}hint.textContent='拖动 · 缩放 · 轻点星球,再点降落';setStatus('');syncPush();});}).catch(function(){});}
 /* — 存储层:IndexedDB — */
 var DB=null, DB_NAME='starsea', STORE='notes';
 function dbOpen(){return new Promise(function(res,rej){var r=indexedDB.open(DB_NAME,1);r.onupgradeneeded=function(e){var db=e.target.result;if(!db.objectStoreNames.contains(STORE))db.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});};r.onsuccess=function(){DB=r.result;res(DB);};r.onerror=function(){rej(r.error);};});}
@@ -209,11 +212,11 @@ function placeNear(conns){if(conns.length){var cx=0,cy=0;conns.forEach(function(
 /* — 由存储记录造一颗星(渲染 id = 数组下标,dbId 另存)— */
 /* 标题 = 第一行;若第一行太长再退回到首个空格/句读切;贴合"第一行标题 + 换行正文",也兼容单行写法 */
 function makeTitle(text){var t=(text||'').replace(/\r/g,'').replace(/^\s+/,'');if(!t)return'';var m=t.split('\n')[0].trim();if(m.length>16){var seg=m.split(/[\s。！？!?…，,、;；]+/)[0];if(seg.length>=4)m=seg;}if(m.length>22)m=m.slice(0,22)+'…';return m;}
-function makeStar(n,idx){return{id:idx,dbId:n.id,label:makeTitle(n.text),body:n.text,vec:n.vec,conns:(n.conns||[]).slice(),created:n.created,x:n.x,y:n.y,r:rnd(3.6,6.2),col:palette[idx%palette.length],ph:rnd(0,6.28),damp:rnd(8,18),scene:scenes[idx%scenes.length],born:1,flash:0};}
+function makeStar(n,idx){return{id:idx,dbId:n.id,label:makeTitle(n.text),body:n.text,vec:n.vec,conns:(n.conns||[]).slice(),created:n.created,source:n.source||null,x:n.x,y:n.y,r:rnd(3.6,6.2),col:palette[idx%palette.length],ph:rnd(0,6.28),damp:rnd(8,18),scene:scenes[idx%scenes.length],born:1,flash:0};}
 /* 从所有星各自存的 conns(dbId)重建无向图(links + nbr)。增删改后调用 */
 function rebuildGraph(){nbr={};links=[];var byDb={},seen={};stars.forEach(function(s,i){nbr[i]=[];byDb[s.dbId]=i;});stars.forEach(function(s,i){(s.conns||[]).forEach(function(did){var j=byDb[did];if(j==null||j===i)return;if(nbr[i].indexOf(j)<0)nbr[i].push(j);if(nbr[j].indexOf(i)<0)nbr[j].push(i);var key=Math.min(i,j)+'-'+Math.max(i,j);if(!seen[key]){seen[key]=1;links.push([i,j]);}});});}
 /* — 启动:从 IndexedDB 载入,重建星与连线;并预热引擎 — */
-function boot(){if(navigator.storage&&navigator.storage.persist){navigator.storage.persist().catch(function(){});}return dbOpen().then(dbAll).then(function(notes){notes.sort(function(a,b){return(a.created||0)-(b.created||0);});notes.forEach(function(n,i){stars.push(makeStar(n,i));});rebuildGraph();hint.textContent=notes.length?'拖动 · 缩放 · 轻点星球,再点降落':'敲下第一个想法,点亮第一颗星';loadEmbedder().catch(function(){});syncPush();}).catch(function(e){console.error('boot failed',e);});}
+function boot(){if(navigator.storage&&navigator.storage.persist){navigator.storage.persist().catch(function(){});}return dbOpen().then(dbAll).then(function(notes){notes.sort(function(a,b){return(a.created||0)-(b.created||0);});notes.forEach(function(n,i){stars.push(makeStar(n,i));});rebuildGraph();hint.textContent=notes.length?'拖动 · 缩放 · 轻点星球,再点降落':'敲下第一个想法,点亮第一颗星';loadEmbedder().catch(function(){});syncPush();ingestInbox();}).catch(function(e){console.error('boot failed',e);});}
 function setStatus(msg){var el=document.getElementById('status');if(!el)return;el.textContent=msg||'';el.style.opacity=msg?'1':'0';}
 function exportNotes(){dbAll().then(function(notes){var blob=new Blob([JSON.stringify(notes)],{type:'application/json'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='starsea-backup.json';document.body.appendChild(a);a.click();a.remove();});}
 boot();
@@ -247,6 +250,7 @@ function draw(now){
   var glow=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,rr*5);glow.addColorStop(0,s.col);glow.addColorStop(.25,s.col);glow.addColorStop(1,'rgba(0,0,0,0)');
   ctx.globalAlpha=Math.min(1,(sel?.95:.5)*tw*dim+s.flash);ctx.fillStyle=glow;ctx.beginPath();ctx.arc(p.x,p.y,rr*5,0,6.28);ctx.fill();
   ctx.globalAlpha=Math.min(1,dim+s.flash);ctx.fillStyle='#fff7e2';ctx.beginPath();ctx.arc(p.x,p.y,rr,0,6.28);ctx.fill();
+  if(s.source==='plaud'){ctx.globalAlpha=Math.min(1,dim)*(.55+.25*Math.sin(t*2+s.ph));ctx.strokeStyle='rgba(150,220,255,.9)';ctx.lineWidth=1.1;ctx.beginPath();ctx.arc(p.x,p.y,rr+3.5,0,6.28);ctx.stroke();ctx.globalAlpha=1;}
   if(sel){ctx.globalAlpha=.5+.3*Math.sin(t*4);ctx.strokeStyle='rgba(255,230,180,.8)';ctx.lineWidth=1;ctx.beginPath();ctx.arc(p.x,p.y,rr+5,0,6.28);ctx.stroke();ctx.globalAlpha=1;}
   s._sx=p.x;s._sy=p.y;s._sr=rr;s._dim=dim;drawn.push(s);});
  ctx.globalAlpha=1;ctx.font='12px -apple-system,sans-serif';ctx.textAlign='center';
