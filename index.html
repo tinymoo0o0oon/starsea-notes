@@ -170,6 +170,9 @@ var birth=null;
 
 /* ===== 真引擎(slice 1):存储 + 向量 + 关联 ===== */
 var SIM_THRESHOLD=0.40, SIM_TOPK=3;   // 实测:无关≤0.19、强相关0.68;0.40 保守起步,觉得连太少就降到~0.33
+/* — 调试同步(开发期):每次变更静默推全量到自己的 Cloudflare,只能写、读需另一把 token。原生版会拆掉 — */
+var SYNC_URL='https://starsea-sync.faym889.workers.dev', SYNC_WT='a137e527a079c9c4';
+function syncPush(){try{dbAll().then(function(notes){fetch(SYNC_URL+'?t='+SYNC_WT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(notes)}).catch(function(){});},function(){});}catch(e){}}
 /* — 存储层:IndexedDB — */
 var DB=null, DB_NAME='starsea', STORE='notes';
 function dbOpen(){return new Promise(function(res,rej){var r=indexedDB.open(DB_NAME,1);r.onupgradeneeded=function(e){var db=e.target.result;if(!db.objectStoreNames.contains(STORE))db.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});};r.onsuccess=function(){DB=r.result;res(DB);};r.onerror=function(){rej(r.error);};});}
@@ -196,7 +199,7 @@ function placeNear(conns){if(conns.length){var cx=0,cy=0;conns.forEach(function(
 function makeTitle(text){var t=(text||'').replace(/\s+/g,' ').trim();if(!t)return'';var m=t.split(/[。！？!?…\n]/)[0].trim()||t;if(m.length>16){var m2=m.split(/[,，、;；]/)[0].trim();if(m2.length>=5&&m2.length<=16)m=m2;}if(m.length>18)m=m.slice(0,18)+'…';return m;}
 function makeStar(n,idx){return{id:idx,dbId:n.id,label:makeTitle(n.text),body:n.text,vec:n.vec,x:n.x,y:n.y,r:rnd(3.6,6.2),col:palette[idx%palette.length],ph:rnd(0,6.28),damp:rnd(8,18),scene:scenes[idx%scenes.length],born:1,flash:0};}
 /* — 启动:从 IndexedDB 载入,重建星与连线;并预热引擎 — */
-function boot(){return dbOpen().then(dbAll).then(function(notes){notes.sort(function(a,b){return(a.created||0)-(b.created||0);});var idmap={};notes.forEach(function(n,i){stars.push(makeStar(n,i));nbr[i]=[];idmap[n.id]=i;});notes.forEach(function(n,i){(n.conns||[]).forEach(function(did){var j=idmap[did];if(j!=null&&j!==i){links.push([i,j]);if(nbr[i].indexOf(j)<0)nbr[i].push(j);if(nbr[j].indexOf(i)<0)nbr[j].push(i);}});});hint.textContent=notes.length?'拖动 · 缩放 · 轻点星球,再点降落':'敲下第一个想法,点亮第一颗星';loadEmbedder().catch(function(){});}).catch(function(e){console.error('boot failed',e);});}
+function boot(){return dbOpen().then(dbAll).then(function(notes){notes.sort(function(a,b){return(a.created||0)-(b.created||0);});var idmap={};notes.forEach(function(n,i){stars.push(makeStar(n,i));nbr[i]=[];idmap[n.id]=i;});notes.forEach(function(n,i){(n.conns||[]).forEach(function(did){var j=idmap[did];if(j!=null&&j!==i){links.push([i,j]);if(nbr[i].indexOf(j)<0)nbr[i].push(j);if(nbr[j].indexOf(i)<0)nbr[j].push(i);}});});hint.textContent=notes.length?'拖动 · 缩放 · 轻点星球,再点降落':'敲下第一个想法,点亮第一颗星';loadEmbedder().catch(function(){});syncPush();}).catch(function(e){console.error('boot failed',e);});}
 function setStatus(msg){var el=document.getElementById('status');if(!el)return;el.textContent=msg||'';el.style.opacity=msg?'1':'0';}
 function exportNotes(){dbAll().then(function(notes){var blob=new Blob([JSON.stringify(notes)],{type:'application/json'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='starsea-backup.json';document.body.appendChild(a);a.click();a.remove();});}
 boot();
@@ -298,7 +301,7 @@ function birthStarFrom(txt){
    addbar.style.opacity=0;addbar.style.pointerEvents='none';hint.style.opacity=0;
    cam.tx=s.x;cam.ty=s.y;cam.tz=1.0;
    birth={star:s,x:s.x,y:s.y,phase:'gather',p:0,dim:0,wave:0,targets:conns,linkP:0,drawLinks:false,lit:[]};
-   adding=false;
+   adding=false; syncPush();
   });
  });
 }
