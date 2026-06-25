@@ -38,7 +38,7 @@ html,body{height:100%;overflow:hidden;background:#0a0711;font-family:-apple-syst
 #back{position:absolute;left:16px;top:calc(14px + env(safe-area-inset-top));font-size:14px;color:#fff;opacity:.92;cursor:pointer;letter-spacing:.3px;text-shadow:0 1px 6px rgba(0,0,0,.6);}
 #notebody{position:absolute;left:0;right:0;bottom:0;padding:26px 28px calc(34px + env(safe-area-inset-bottom));max-height:62%;overflow:auto;}
 #ntitle{font-size:21px;font-weight:500;line-height:1.4;margin-bottom:12px;}
-#ntext{font-size:15px;line-height:1.85;opacity:.92;}
+#ntext{font-size:15px;line-height:1.85;opacity:.92;white-space:pre-wrap;word-break:break-word;}
 #status{position:absolute;left:50%;bottom:calc(86px + env(safe-area-inset-bottom));transform:translateX(-50%);font-size:12px;color:#ffd9a0;background:rgba(20,13,24,.85);border:.5px solid rgba(255,190,110,.3);border-radius:10px;padding:7px 14px;opacity:0;transition:opacity .3s;pointer-events:none;backdrop-filter:blur(6px);letter-spacing:.5px;white-space:nowrap;}
 #exp{position:absolute;right:12px;top:calc(56px + env(safe-area-inset-top));width:38px;height:38px;border-radius:10px;background:rgba(20,13,24,.7);border:.5px solid rgba(255,190,110,.3);display:flex;align-items:center;justify-content:center;cursor:pointer;color:#ffd9a0;backdrop-filter:blur(6px);}
 #exp svg{width:17px;height:17px;}
@@ -104,7 +104,7 @@ html,body{height:100%;overflow:hidden;background:#0a0711;font-family:-apple-syst
 <div id="cardjump">落到这颗星 ↗</div>
 </div>
 <div id="addbar">
-<textarea id="newnote" rows="1" placeholder="敲下一个想法,见证它成为一颗星…"></textarea>
+<textarea id="newnote" rows="1" placeholder="第一行作标题,换行写正文 · 也可只写一句…"></textarea>
 <button id="addbtn">点亮</button>
 </div>
 <div id="surface">
@@ -195,8 +195,8 @@ function dot(a,b){var s=0;for(var i=0;i<a.length;i++)s+=a[i]*b[i];return s;}
 function connectTo(vec){var sc=[];for(var i=0;i<stars.length;i++){if(!stars[i].vec)continue;sc.push({i:i,s:dot(vec,stars[i].vec)});}sc.sort(function(a,b){return b.s-a.s;});var out=[];for(var k=0;k<sc.length&&out.length<SIM_TOPK;k++){if(sc[k].s>=SIM_THRESHOLD)out.push(sc[k].i);}return out;}
 function placeNear(conns){if(conns.length){var cx=0,cy=0;conns.forEach(function(i){cx+=stars[i].x;cy+=stars[i].y;});cx/=conns.length;cy/=conns.length;var a=rnd(0,6.28),r=rnd(45,95);return{x:cx+Math.cos(a)*r,y:cy+Math.sin(a)*r};}return{x:rnd(-260,260),y:rnd(-190,190)};}
 /* — 由存储记录造一颗星(渲染 id = 数组下标,dbId 另存)— */
-/* 标题 = 切到第一个自然边界(空格/换行/句读,谁先用谁),贴合"标题 空格 正文"的写法;太短则回退全文 */
-function makeTitle(text){var t=(text||'').replace(/\r/g,'').trim();if(!t)return'';var m=t.split(/[\s。！？!?…，,、;；]+/)[0];if(m.length<4)m=t.replace(/\s+/g,' ');if(m.length>20)m=m.slice(0,20)+'…';return m;}
+/* 标题 = 第一行;若第一行太长再退回到首个空格/句读切;贴合"第一行标题 + 换行正文",也兼容单行写法 */
+function makeTitle(text){var t=(text||'').replace(/\r/g,'').replace(/^\s+/,'');if(!t)return'';var m=t.split('\n')[0].trim();if(m.length>16){var seg=m.split(/[\s。！？!?…，,、;；]+/)[0];if(seg.length>=4)m=seg;}if(m.length>22)m=m.slice(0,22)+'…';return m;}
 function makeStar(n,idx){return{id:idx,dbId:n.id,label:makeTitle(n.text),body:n.text,vec:n.vec,x:n.x,y:n.y,r:rnd(3.6,6.2),col:palette[idx%palette.length],ph:rnd(0,6.28),damp:rnd(8,18),scene:scenes[idx%scenes.length],born:1,flash:0};}
 /* — 启动:从 IndexedDB 载入,重建星与连线;并预热引擎 — */
 function boot(){return dbOpen().then(dbAll).then(function(notes){notes.sort(function(a,b){return(a.created||0)-(b.created||0);});var idmap={};notes.forEach(function(n,i){stars.push(makeStar(n,i));nbr[i]=[];idmap[n.id]=i;});notes.forEach(function(n,i){(n.conns||[]).forEach(function(did){var j=idmap[did];if(j!=null&&j!==i){links.push([i,j]);if(nbr[i].indexOf(j)<0)nbr[i].push(j);if(nbr[j].indexOf(i)<0)nbr[j].push(i);}});});hint.textContent=notes.length?'拖动 · 缩放 · 轻点星球,再点降落':'敲下第一个想法,点亮第一颗星';loadEmbedder().catch(function(){});syncPush();}).catch(function(e){console.error('boot failed',e);});}
@@ -266,7 +266,8 @@ function deselect(){selected=-1;card.style.opacity=0;card.style.transform='trans
 var palettes={dusk:{sky:['#3a1f4d','#b5587a','#ff9e6b'],ground:'#2a1530',accent:'#ffd9a0',text:'#fff0e0',sun:1},snow:{sky:['#16314f','#3f6b94','#9fc5e0'],ground:'#cfe2f0',accent:'#7fa8c8',text:'#16314f',sun:1},bloom:{sky:['#5a2a52','#c25b8e','#ffc2d8'],ground:'#3a1c38',accent:'#ffd6e6',text:'#fff0f6',sun:0},ocean:{sky:['#062b3a','#0d5e6e','#3fb4ab'],ground:'#04222e',accent:'#bdeee6',text:'#e8fbf7',sun:0},ember:{sky:['#2a0f10','#7a2418','#e0632a'],ground:'#1c0a0a',accent:'#ffc98a',text:'#ffe7d6',sun:1}};
 var surfAnim=null;
 function paintSurface(s){var P=palettes[s.scene],t=(performance.now()-t0)/1000;var g=lctx.createLinearGradient(0,0,0,H);g.addColorStop(0,P.sky[0]);g.addColorStop(.55,P.sky[1]);g.addColorStop(.8,P.sky[2]);lctx.fillStyle=g;lctx.fillRect(0,0,W,H);for(var i=0;i<60;i++){var st=(i*89)%W,sy2=(i*53)%(H*.5);lctx.globalAlpha=.3+.3*Math.sin(t*1.5+i);lctx.fillStyle='#fff';lctx.fillRect(st,sy2,1,1);}lctx.globalAlpha=1;if(P.sun){var sx=W*.74,sy=H*.3;var sg=lctx.createRadialGradient(sx,sy,0,sx,sy,80);sg.addColorStop(0,'rgba(255,250,230,.95)');sg.addColorStop(1,'rgba(255,250,230,0)');lctx.fillStyle=sg;lctx.beginPath();lctx.arc(sx,sy,80,0,6.28);lctx.fill();}var hy=H*.6;lctx.fillStyle=P.ground;lctx.beginPath();lctx.moveTo(0,hy);for(var x=0;x<=W;x+=20){lctx.lineTo(x,hy+Math.sin(x*.018+s.ph)*10+Math.sin(x*.05)*4);}lctx.lineTo(W,H);lctx.lineTo(0,H);lctx.closePath();lctx.fill();for(var j=0;j<44;j++){var fx=((j*53+t*9*(j%2?1:-1))%W+W)%W;var fy=hy-18-((j*37)%Math.floor(H*.4));lctx.globalAlpha=.35+.45*Math.sin(t*2+j);lctx.fillStyle=P.accent;lctx.beginPath();lctx.arc(fx,fy,1.4,0,6.28);lctx.fill();}lctx.globalAlpha=1;if(mode==='surface')surfAnim=requestAnimationFrame(function(){paintSurface(s);});}
-function enterSurface(s){mode='surface';deselect();var P=palettes[s.scene];ntitle.textContent=s.label;ntitle.style.color=P.text;ntext.textContent=s.body;ntext.style.color=P.text;notebody.style.background='linear-gradient(to top, rgba(0,0,0,.5), rgba(0,0,0,0))';surface.style.opacity=1;surface.style.pointerEvents='auto';hint.style.opacity=0;addbar.style.opacity=0;addbar.style.pointerEvents='none';if(surfAnim)cancelAnimationFrame(surfAnim);paintSurface(s);}
+function enterSurface(s){mode='surface';deselect();var P=palettes[s.scene];ntitle.textContent=s.label;ntitle.style.color=P.text;
+ var bd=s.body||'';var nl=bd.indexOf('\n');var shown=nl>=0?bd.slice(nl+1).replace(/^\s+/,''):bd;ntext.textContent=shown;ntext.style.color=P.text;notebody.style.background='linear-gradient(to top, rgba(0,0,0,.5), rgba(0,0,0,0))';surface.style.opacity=1;surface.style.pointerEvents='auto';hint.style.opacity=0;addbar.style.opacity=0;addbar.style.pointerEvents='none';if(surfAnim)cancelAnimationFrame(surfAnim);paintSurface(s);}
 function exitSurface(){mode='space';if(surfAnim)cancelAnimationFrame(surfAnim);surface.style.opacity=0;surface.style.pointerEvents='none';addbar.style.opacity=1;addbar.style.pointerEvents='auto';dive=0;cam.tz=.62;}
 document.getElementById('back').addEventListener('click',exitSurface);
 function startDive(id){deselect();diving=true;dive=0;diveTarget=stars[id];}
