@@ -336,9 +336,7 @@ function birthStarFrom(txt){
    stars.push(s); nbr[idx]=[];
    rebuildGraph();
    if(vec){setStatus('');}else{setStatus('引擎没连上,这颗星先单独存下了');setTimeout(function(){setStatus('');},2600);}
-   addbar.style.opacity=0;addbar.style.pointerEvents='none';hint.style.opacity=0;
-   cam.tx=s.x;cam.ty=s.y;cam.tz=1.0;
-   birth={star:s,x:s.x,y:s.y,phase:'gather',p:0,dim:0,wave:0,targets:conns,linkP:0,drawLinks:false,lit:[]};
+   s.flash=1.6;s.spawn=1;initAudio();piano(noteScale[idx%noteScale.length],.14);  /* TEMP ping-ring preview — revert to cinematic after */
    adding=false; syncPush();
   });
  });
