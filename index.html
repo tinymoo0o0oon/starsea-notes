@@ -45,8 +45,7 @@ html,body{height:100%;overflow:hidden;background:#0a0711;font-family:-apple-syst
 #notebody.full{height:100%;border-radius:0;}
 /* 全屏时把顶部留出 iPhone 安全区,横条/编辑删除不被刘海挡住 */
 #notebody.full #grab{padding-top:calc(10px + env(safe-area-inset-top));}
-#grab{flex:0 0 auto;display:none;justify-content:center;padding:9px 0 3px;cursor:pointer;}
-#notebody.scrollable #grab,#notebody.full #grab{display:flex;}
+#grab{flex:0 0 auto;display:flex;justify-content:center;padding:9px 0 3px;cursor:pointer;}
 #grab i{width:38px;height:4px;border-radius:3px;background:rgba(255,210,160,.4);}
 #noteacts{flex:0 0 auto;display:flex;justify-content:flex-end;gap:16px;padding:4px 22px 0;}
 #noteacts span{font-size:13.5px;color:#cbb89d;opacity:.92;cursor:pointer;letter-spacing:.3px;}
@@ -363,12 +362,12 @@ function showNote(s){
   layoutCard();
 }
 /* 内容超出 → 可滚(显横条+底部渐隐);内容没满 → 居中、无横条。点横条在默认高度↔全屏切换 */
-function layoutCard(){requestAnimationFrame(function(){var over=cardscroll.scrollHeight>cardscroll.clientHeight+1;notebody.classList.toggle('scrollable',over);});}
+function layoutCard(){function m(){var over=cardscroll.scrollHeight>cardscroll.clientHeight+1;notebody.classList.toggle('scrollable',over);}requestAnimationFrame(m);setTimeout(m,320);}
 function topUtil(show){var ex=document.getElementById('exp');[sndbtn,ex].forEach(function(el){if(!el)return;el.style.opacity=show?'':'0';el.style.pointerEvents=show?'auto':'none';});}
 function enterSurface(s){mode='surface';deselect();surfStar=s;notebody.classList.remove('full');cancelEdit();showNote(s);surface.style.opacity=1;surface.style.pointerEvents='auto';hint.style.opacity=0;addbar.style.opacity=0;addbar.style.pointerEvents='none';topUtil(false);if(surfAnim)cancelAnimationFrame(surfAnim);paintSurface(s);}
 function exitSurface(){mode='space';surfStar=null;cancelEdit();topUtil(true);if(surfAnim)cancelAnimationFrame(surfAnim);surface.style.opacity=0;surface.style.pointerEvents='none';addbar.style.opacity=1;addbar.style.pointerEvents='auto';dive=0;cam.tz=.62;}
 document.getElementById('back').addEventListener('click',exitSurface);
-document.getElementById('grab').addEventListener('click',function(e){e.stopPropagation();if(!notebody.classList.contains('scrollable'))return;notebody.classList.toggle('full');layoutCard();});
+document.getElementById('grab').addEventListener('click',function(e){e.stopPropagation();notebody.classList.toggle('full');layoutCard();});
 window.addEventListener('resize',function(){if(mode==='surface')layoutCard();});
 /* — 编辑 / 删除(在落地阅读视图里)— */
 var delArmed=false,delTimer=null;
