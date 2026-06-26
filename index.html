@@ -35,16 +35,18 @@ html,body{height:100%;overflow:hidden;background:#0a0711;font-family:-apple-syst
 #addbtn{flex:none;height:46px;background:rgba(255,180,110,.16);border:.5px solid rgba(255,190,110,.45);border-radius:12px;color:#ffd9a0;font-size:14px;padding:0 18px;cursor:pointer;font-family:inherit;}
 #surface{position:absolute;inset:0;opacity:0;pointer-events:none;transition:opacity .6s;}
 #land{position:absolute;inset:0;width:100%;height:100%;}
-#back{position:absolute;left:16px;top:calc(14px + env(safe-area-inset-top));font-size:14px;color:#fff;opacity:.92;cursor:pointer;letter-spacing:.3px;text-shadow:0 1px 6px rgba(0,0,0,.6);}
+#back{position:absolute;left:16px;top:calc(14px + env(safe-area-inset-top));z-index:5;font-size:14px;color:#fff;opacity:.92;cursor:pointer;letter-spacing:.3px;text-shadow:0 1px 6px rgba(0,0,0,.6);}
 /* 落地阅读卡:满宽、顶部圆角玻璃、下限高度、内容随高、超出卡内滚、点横条切全屏 */
-#notebody{position:absolute;left:0;right:0;bottom:0;min-height:32%;max-height:82%;
+#notebody{position:absolute;left:0;right:0;bottom:0;height:56%;
   background:rgba(17,11,20,.62);-webkit-backdrop-filter:blur(17px) saturate(1.2);backdrop-filter:blur(17px) saturate(1.2);
   border:none;border-top:1px solid rgba(255,196,122,.30);border-radius:22px 22px 0 0;
   box-shadow:0 -16px 55px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.10);
-  display:flex;flex-direction:column;overflow:hidden;transition:min-height .28s,max-height .28s;}
-#notebody.full{min-height:100%;max-height:100%;border-radius:0;}
+  display:flex;flex-direction:column;overflow:hidden;transition:height .28s;}
+#notebody.full{height:100%;border-radius:0;}
+/* 全屏时把顶部留出 iPhone 安全区,横条/编辑删除不被刘海挡住 */
+#notebody.full #grab{padding-top:calc(10px + env(safe-area-inset-top));}
 #grab{flex:0 0 auto;display:none;justify-content:center;padding:9px 0 3px;cursor:pointer;}
-#notebody.scrollable #grab{display:flex;}
+#notebody.scrollable #grab,#notebody.full #grab{display:flex;}
 #grab i{width:38px;height:4px;border-radius:3px;background:rgba(255,210,160,.4);}
 #noteacts{flex:0 0 auto;display:flex;justify-content:flex-end;gap:16px;padding:4px 22px 0;}
 #noteacts span{font-size:13.5px;color:#cbb89d;opacity:.92;cursor:pointer;letter-spacing:.3px;}
@@ -361,7 +363,7 @@ function showNote(s){
   layoutCard();
 }
 /* 内容超出 → 可滚(显横条+底部渐隐);内容没满 → 居中、无横条。点横条在默认高度↔全屏切换 */
-function layoutCard(){requestAnimationFrame(function(){var over=cardscroll.scrollHeight>cardscroll.clientHeight+1;notebody.classList.toggle('scrollable',over);if(!over)notebody.classList.remove('full');});}
+function layoutCard(){requestAnimationFrame(function(){var over=cardscroll.scrollHeight>cardscroll.clientHeight+1;notebody.classList.toggle('scrollable',over);});}
 function topUtil(show){var ex=document.getElementById('exp');[sndbtn,ex].forEach(function(el){if(!el)return;el.style.opacity=show?'':'0';el.style.pointerEvents=show?'auto':'none';});}
 function enterSurface(s){mode='surface';deselect();surfStar=s;notebody.classList.remove('full');cancelEdit();showNote(s);surface.style.opacity=1;surface.style.pointerEvents='auto';hint.style.opacity=0;addbar.style.opacity=0;addbar.style.pointerEvents='none';topUtil(false);if(surfAnim)cancelAnimationFrame(surfAnim);paintSurface(s);}
 function exitSurface(){mode='space';surfStar=null;cancelEdit();topUtil(true);if(surfAnim)cancelAnimationFrame(surfAnim);surface.style.opacity=0;surface.style.pointerEvents='none';addbar.style.opacity=1;addbar.style.pointerEvents='auto';dive=0;cam.tz=.62;}
