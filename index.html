@@ -473,5 +473,6 @@ noteEl.addEventListener('keydown',function(e){if(e.key==='Enter'&&(e.metaKey||e.
 document.getElementById('exp').addEventListener('click',function(e){e.stopPropagation();exportNotes();});
 })();
 </script>
+<script>if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(function(){});}</script>
 </body>
 </html>
