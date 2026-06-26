@@ -291,11 +291,9 @@ function draw(now){
   if(birth&&birth.wave>0&&birth.star!==s){var ddx=s.x-birth.x,ddy=s.y-birth.y,dd=Math.sqrt(ddx*ddx+ddy*ddy)||1;var push=birth.wave*60/Math.max(60,dd);wx+=ddx/dd*push;wy+=ddy/dd*push;}
   var p=w2s(wx,wy);var tw=.7+.3*Math.sin(t*2+s.ph);if(s.flash>0)s.flash=Math.max(0,s.flash-.02);if(s.born<1&&!(birth&&birth.star===s))s.born=Math.min(1,s.born+.03);if(s.spawn>0)s.spawn=Math.max(0,s.spawn-.018);
   var sel=s.id===act;var dim=act>=0&&!sel&&nbr[act].indexOf(s.id)<0?.3:1;dim*=(1-dimGlobal*.7);
-  var deg=(nbr[s.id]||[]).length;var bright=1+Math.min(deg,6)*.12;   // 连接数 = 亮(光晕更饱/更大),与"大小=长度"正交
   var rr=s.r*cam.zoom*(sel?1.6:1)*(1+s.flash*.6)*(.4+.6*s.born);
-  var gr=rr*5*(1+Math.min(deg,6)*.05);
-  var glow=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,gr);glow.addColorStop(0,s.col);glow.addColorStop(.25,s.col);glow.addColorStop(1,'rgba(0,0,0,0)');
-  ctx.globalAlpha=Math.min(1,(sel?.95:.5)*bright*tw*dim*s.born+s.flash);ctx.fillStyle=glow;ctx.beginPath();ctx.arc(p.x,p.y,gr,0,6.28);ctx.fill();
+  var glow=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,rr*5);glow.addColorStop(0,s.col);glow.addColorStop(.25,s.col);glow.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.globalAlpha=Math.min(1,(sel?.95:.5)*tw*dim*s.born+s.flash);ctx.fillStyle=glow;ctx.beginPath();ctx.arc(p.x,p.y,rr*5,0,6.28);ctx.fill();
   ctx.globalAlpha=Math.min(1,dim*s.born+s.flash);ctx.fillStyle='#fff7e2';ctx.beginPath();ctx.arc(p.x,p.y,rr,0,6.28);ctx.fill();
   if(s.source==='plaud'){ctx.globalAlpha=Math.min(1,dim*s.born)*(.55+.25*Math.sin(t*2+s.ph));ctx.strokeStyle='rgba(150,220,255,.9)';ctx.lineWidth=1.1;ctx.beginPath();ctx.arc(p.x,p.y,rr+3.5,0,6.28);ctx.stroke();ctx.globalAlpha=1;}
   if(s.spawn>0){var sp=1-s.spawn;ctx.strokeStyle='rgba(255,244,214,1)';ctx.globalAlpha=s.spawn*s.spawn*.95;ctx.lineWidth=2.6*s.spawn+.6;ctx.beginPath();ctx.arc(p.x,p.y,rr+8+sp*78,0,6.28);ctx.stroke();ctx.globalAlpha=s.spawn*.45;ctx.lineWidth=1.6*s.spawn+.4;ctx.beginPath();ctx.arc(p.x,p.y,rr+4+sp*44,0,6.28);ctx.stroke();ctx.globalAlpha=1;}
