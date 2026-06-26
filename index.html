@@ -226,7 +226,7 @@ function startBirthCine(s,targets){initAudio();s.pending=false;addbar.style.opac
 
 /* ===== 真引擎(slice 1):存储 + 向量 + 关联 ===== */
 var SIM_THRESHOLD=0.40, SIM_TOPK=3;   // 实测:无关≤0.19、强相关0.68;0.40 保守起步,觉得连太少就降到~0.33
-var SEARCH_THRESHOLD=0.30, SEARCH_MAX=12, searchHits=null;   // 按意思搜:命中阈值/上限;searchHits=null 即未在搜
+var SEARCH_THRESHOLD=0.30, SEARCH_MAX=12, SEARCH_MINLEN=6, searchHits=null;   // 按意思搜:命中阈值/上限/最短字数(太短=噪声向量,匹配一切);searchHits=null 即未在搜
 /* — 调试同步(开发期):每次变更静默推全量到自己的 Cloudflare,只能写、读需另一把 token。原生版会拆掉 — */
 var SYNC_URL='https://starsea-sync.faym889.workers.dev', SYNC_WT='a137e527a079c9c4', SYNC_INBOX='63b13477f1fb57c42b44ad2e';
 function syncPush(){try{dbAll().then(function(notes){fetch(SYNC_URL+'?t='+SYNC_WT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(notes)}).catch(function(){});},function(){});}catch(e){}}
@@ -455,10 +455,10 @@ function birthStarFrom(txt){
 function runSearch(q){q=(q||'').trim();if(!q)return;deselect();setStatus('正在按意思找…');
  embed(q).then(function(v){return v;},function(){return null;}).then(function(vec){
   if(!vec){setStatus('引擎没连上,搜不了');setTimeout(function(){setStatus('');},2000);return;}
-  var sc=[];stars.forEach(function(s){if(!s.vec)return;sc.push({id:s.id,s:dot(vec,s.vec)});});
+  var sc=[];stars.forEach(function(s){if(!s.vec||(s.body||'').trim().length<SEARCH_MINLEN)return;sc.push({id:s.id,s:dot(vec,s.vec)});});
   sc.sort(function(a,b){return b.s-a.s;});
   var hits=[];for(var k=0;k<sc.length&&hits.length<SEARCH_MAX;k++){if(sc[k].s>=SEARCH_THRESHOLD)hits.push(sc[k].id);}
-  if(!hits.length)hits=sc.slice(0,3).map(function(x){return x.id;});   // 没过阈值就兜底给最接近的几颗
+  if(!hits.length){searchHits=null;setStatus('没找到跟「'+q+'」意思相近的');setTimeout(function(){setStatus('');},2200);return;}   // 老实说没有,不硬塞
   searchHits={};hits.forEach(function(id){searchHits[id]=1;stars[id].flash=Math.max(stars[id].flash,1);});
   setStatus(hits.length+' 颗跟「'+q+'」意思相近');setTimeout(function(){setStatus('');},2200);
  });}
