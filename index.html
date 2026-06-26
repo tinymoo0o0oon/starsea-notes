@@ -33,6 +33,7 @@ html,body{height:100%;overflow:hidden;background:#0a0711;font-family:-apple-syst
 #newnote{flex:1;height:46px;max-height:40vh;overflow-y:auto;resize:none;box-sizing:border-box;background:rgba(20,13,24,.82);border:.5px solid rgba(255,190,110,.3);border-radius:12px;padding:12px 14px;color:#ffe9bd;font-size:15px;line-height:1.5;outline:none;backdrop-filter:blur(6px);font-family:inherit;}
 #newnote::placeholder{color:#9a7a55;}
 #addbtn{flex:none;height:46px;background:rgba(255,180,110,.16);border:.5px solid rgba(255,190,110,.45);border-radius:12px;color:#ffd9a0;font-size:14px;padding:0 18px;cursor:pointer;font-family:inherit;}
+#findbtn{flex:none;height:46px;background:rgba(255,255,255,.05);border:.5px solid rgba(255,190,110,.26);border-radius:12px;color:#c89a6a;font-size:14px;padding:0 15px;cursor:pointer;font-family:inherit;}
 #surface{position:absolute;inset:0;opacity:0;pointer-events:none;transition:opacity .6s;}
 #land{position:absolute;inset:0;width:100%;height:100%;}
 #back{position:absolute;left:16px;top:calc(14px + env(safe-area-inset-top));z-index:5;font-size:14px;color:#fff;opacity:.92;cursor:pointer;letter-spacing:.3px;text-shadow:0 1px 6px rgba(0,0,0,.6);}
@@ -146,6 +147,7 @@ html,body{height:100%;overflow:hidden;background:#0a0711;font-family:-apple-syst
 </div>
 <div id="addbar">
 <textarea id="newnote" rows="1" placeholder="敲下一个想法,见证它成为一颗星…"></textarea>
+<button id="findbtn">找</button>
 <button id="addbtn">点亮</button>
 </div>
 <div id="surface">
@@ -224,6 +226,7 @@ function startBirthCine(s,targets){initAudio();s.pending=false;addbar.style.opac
 
 /* ===== 真引擎(slice 1):存储 + 向量 + 关联 ===== */
 var SIM_THRESHOLD=0.40, SIM_TOPK=3;   // 实测:无关≤0.19、强相关0.68;0.40 保守起步,觉得连太少就降到~0.33
+var SEARCH_THRESHOLD=0.30, SEARCH_MAX=12, searchHits=null;   // 按意思搜:命中阈值/上限;searchHits=null 即未在搜
 /* — 调试同步(开发期):每次变更静默推全量到自己的 Cloudflare,只能写、读需另一把 token。原生版会拆掉 — */
 var SYNC_URL='https://starsea-sync.faym889.workers.dev', SYNC_WT='a137e527a079c9c4', SYNC_INBOX='63b13477f1fb57c42b44ad2e';
 function syncPush(){try{dbAll().then(function(notes){fetch(SYNC_URL+'?t='+SYNC_WT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(notes)}).catch(function(){});},function(){});}catch(e){}}
@@ -306,7 +309,7 @@ function draw(now){
   var sw=Math.sin(t*s.damp*.1+s.ph)*7,sv=Math.cos(t*s.damp*.08+s.ph)*6;var wx=s.x+sw,wy=s.y+sv;
   if(birth&&birth.wave>0&&birth.star!==s){var ddx=s.x-birth.x,ddy=s.y-birth.y,dd=Math.sqrt(ddx*ddx+ddy*ddy)||1;var push=birth.wave*60/Math.max(60,dd);wx+=ddx/dd*push;wy+=ddy/dd*push;}
   var p=w2s(wx,wy);var tw=.7+.3*Math.sin(t*2+s.ph);if(s.flash>0)s.flash=Math.max(0,s.flash-.02);if(s.born<1&&!(birth&&birth.star===s))s.born=Math.min(1,s.born+.03);if(s.spawn>0)s.spawn=Math.max(0,s.spawn-.018);
-  var sel=s.id===act;var dim=act>=0&&!sel&&nbr[act].indexOf(s.id)<0?.3:1;dim*=(1-dimGlobal*.7);
+  var sel=s.id===act;var dim=act>=0&&!sel&&nbr[act].indexOf(s.id)<0?.3:1;if(searchHits&&!searchHits[s.id])dim=Math.min(dim,.10);dim*=(1-dimGlobal*.7);
   var rr=s.r*cam.zoom*(sel?1.6:1)*(1+s.flash*.6)*(.4+.6*s.born);
   var glow=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,rr*5);glow.addColorStop(0,s.col);glow.addColorStop(.25,s.col);glow.addColorStop(1,'rgba(0,0,0,0)');
   ctx.globalAlpha=Math.min(1,(sel?.95:.5)*tw*dim*s.born+s.flash);ctx.fillStyle=glow;ctx.beginPath();ctx.arc(p.x,p.y,rr*5,0,6.28);ctx.fill();
@@ -323,12 +326,13 @@ function draw(now){
  var budget=act>=0?Infinity:(cam.zoom>=1.02?Infinity:Math.max(0,Math.round(4+(cam.zoom-.5)*22))),shown=0;
  drawn.forEach(function(s){
   var focus=(s.id===act)||(act>=0&&nbr[act].indexOf(s.id)>=0);
-  if(act>=0){if(!focus)return;}else if(shown>=budget)return;
+  var isHit=searchHits&&searchHits[s.id];
+  if(searchHits){if(!isHit)return;}else if(act>=0){if(!focus)return;}else if(shown>=budget)return;
   var lx2=s._sx,ly2=s._sy+s._sr+15,ok=true;
   for(var i=0;i<placed.length;i++){if(Math.abs(placed[i].x-lx2)<54&&Math.abs(placed[i].y-ly2)<15){ok=false;break;}}
-  if(!ok&&!focus)return;
-  ctx.globalAlpha=Math.min(1,(cam.zoom-.3)*2)*s._dim*(focus?1:.82);ctx.fillStyle='#ffe9bd';ctx.fillText(s.label,lx2,ly2);placed.push({x:lx2,y:ly2});
-  if(!focus)shown++;
+  if(!ok&&!focus&&!isHit)return;
+  ctx.globalAlpha=Math.min(1,(cam.zoom-.3)*2)*s._dim*(focus||isHit?1:.82);ctx.fillStyle='#ffe9bd';ctx.fillText(s.label,lx2,ly2);placed.push({x:lx2,y:ly2});
+  if(!focus&&!isHit)shown++;
  });
  ctx.globalAlpha=1;
  if(birth)stepBirth(t);
@@ -417,7 +421,7 @@ var drag=false,dragged=false,lx=0,ly=0;
 function busy(){return mode!=='space'||birth;}
 function down(e){initAudio();if(busy())return;var p=relPos(e);drag=true;dragged=false;lx=p.x;ly=p.y;if(e.cancelable&&e.type.indexOf('touch')>=0)e.preventDefault();}
 function move(e){if(mode!=='space')return;var p=relPos(e);if(drag){var dx=p.x-lx,dy=p.y-ly;if(Math.abs(dx)+Math.abs(dy)>4)dragged=true;cam.tx-=dx/cam.zoom;cam.ty-=dy/cam.zoom;cam.x-=dx/cam.zoom;cam.y-=dy/cam.zoom;lx=p.x;ly=p.y;}else{var h=pick(p.x,p.y);cv.style.cursor=h>=0?'pointer':'grab';}}
-function up(e){if(busy()){drag=false;return;}if(drag&&!dragged){var p=relPos(e);var id=pick(p.x,p.y);if(id>=0){if(selected===id){startDive(id);}else{selectStar(id,false);}}else{deselect();}}drag=false;}
+function up(e){if(busy()){drag=false;return;}if(drag&&!dragged){var p=relPos(e);var id=pick(p.x,p.y);if(id>=0){if(selected===id){startDive(id);}else{selectStar(id,false);}}else{deselect();}clearSearch();}drag=false;}
 cv.addEventListener('mousedown',down);window.addEventListener('mousemove',move);window.addEventListener('mouseup',up);
 cv.addEventListener('touchstart',function(e){down(e.touches[0]);},{passive:false});
 window.addEventListener('touchmove',function(e){if(drag){move(e.touches[0]);if(e.cancelable)e.preventDefault();}},{passive:false});
@@ -447,11 +451,24 @@ function birthStarFrom(txt){
   });
  });
 }
+/* — 按意思搜(浅档):纯本地,query 转向量→对每颗星算余弦→命中点亮、其余压暗。点空白或选中某颗即复原 — */
+function runSearch(q){q=(q||'').trim();if(!q)return;deselect();setStatus('正在按意思找…');
+ embed(q).then(function(v){return v;},function(){return null;}).then(function(vec){
+  if(!vec){setStatus('引擎没连上,搜不了');setTimeout(function(){setStatus('');},2000);return;}
+  var sc=[];stars.forEach(function(s){if(!s.vec)return;sc.push({id:s.id,s:dot(vec,s.vec)});});
+  sc.sort(function(a,b){return b.s-a.s;});
+  var hits=[];for(var k=0;k<sc.length&&hits.length<SEARCH_MAX;k++){if(sc[k].s>=SEARCH_THRESHOLD)hits.push(sc[k].id);}
+  if(!hits.length)hits=sc.slice(0,3).map(function(x){return x.id;});   // 没过阈值就兜底给最接近的几颗
+  searchHits={};hits.forEach(function(id){searchHits[id]=1;stars[id].flash=Math.max(stars[id].flash,1);});
+  setStatus(hits.length+' 颗跟「'+q+'」意思相近');setTimeout(function(){setStatus('');},2200);
+ });}
+function clearSearch(){searchHits=null;}
 var noteEl=document.getElementById('newnote');
 function growNote(){noteEl.style.height='auto';noteEl.style.height=Math.min(noteEl.scrollHeight+2,window.innerHeight*0.4)+'px';}
 function submitNote(){var v=noteEl.value.trim();if(!v)return;birthStarFrom(v);noteEl.value='';growNote();noteEl.blur();}
 noteEl.addEventListener('input',growNote);
 document.getElementById('addbtn').addEventListener('click',submitNote);
+document.getElementById('findbtn').addEventListener('click',function(){var v=noteEl.value.trim();if(!v)return;runSearch(v);noteEl.blur();});
 noteEl.addEventListener('keydown',function(e){if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)){e.preventDefault();submitNote();}});
 document.getElementById('exp').addEventListener('click',function(e){e.stopPropagation();exportNotes();});
 })();
