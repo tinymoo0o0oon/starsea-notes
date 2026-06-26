@@ -304,17 +304,17 @@ function draw(now){
  /* 标签 = 会呼吸:默认纯星点,只有少数枢纽星(连得多)挂名;凑近整片亮字;选中则只它和邻居挂名 */
  ctx.globalAlpha=1;ctx.font='12px -apple-system,sans-serif';ctx.textAlign='center';
  var placed=[];
- drawn.sort(function(a,b){function rk(s){var f=(s.id===act||(act>=0&&nbr[act].indexOf(s.id)>=0))?100:0;return f+(nbr[s.id]||[]).length;}return rk(b)-rk(a);});
+ drawn.sort(function(a,b){function rk(s){var f=(s.id===act||(act>=0&&nbr[act].indexOf(s.id)>=0))?1000:0;return f+(nbr[s.id]||[]).length;}return rk(b)-rk(a);});
+ /* 名额制:选中→只它+邻居;否则按度数排队,远景只发前几名,越凑近名额越多,近景(≥1.02)全放开 */
+ var budget=act>=0?Infinity:(cam.zoom>=1.02?Infinity:Math.max(0,Math.round(4+(cam.zoom-.5)*22))),shown=0;
  drawn.forEach(function(s){
   var focus=(s.id===act)||(act>=0&&nbr[act].indexOf(s.id)>=0);
-  var deg=(nbr[s.id]||[]).length,show;
-  if(act>=0)show=focus;                                 // 选中:聚焦它+邻居,其余收字
-  else show=(cam.zoom>=1.02)||(deg>=3&&cam.zoom>=.5);   // 默认:近看全亮字,中远只剩枢纽星
-  if(!show)return;
+  if(act>=0){if(!focus)return;}else if(shown>=budget)return;
   var lx2=s._sx,ly2=s._sy+s._sr+15,ok=true;
-  for(var i=0;i<placed.length;i++){if(Math.abs(placed[i].x-lx2)<46&&Math.abs(placed[i].y-ly2)<14){ok=false;break;}}
+  for(var i=0;i<placed.length;i++){if(Math.abs(placed[i].x-lx2)<54&&Math.abs(placed[i].y-ly2)<15){ok=false;break;}}
   if(!ok&&!focus)return;
   ctx.globalAlpha=Math.min(1,(cam.zoom-.3)*2)*s._dim*(focus?1:.82);ctx.fillStyle='#ffe9bd';ctx.fillText(s.label,lx2,ly2);placed.push({x:lx2,y:ly2});
+  if(!focus)shown++;
  });
  ctx.globalAlpha=1;
  if(birth)stepBirth(t);
