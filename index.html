@@ -352,7 +352,7 @@ function stepBirth(t){
 
 function pick(mx,my){var best=-1,bd=1e9;stars.forEach(function(s){if(s._sx==null)return;var dx=s._sx-mx,dy=s._sy-my;var d=dx*dx+dy*dy;var hit=Math.max(20,s._sr+16);if(d<hit*hit&&d<bd){bd=d;best=s.id;}});return best;}
 
-function selectStar(id,tagBorn){selected=id;var s=stars[id];cardtag.textContent=tagBorn?'已为你连接':'已选中';cardtitle.textContent=s.label;cardlinks.innerHTML='';
+function selectStar(id,tagBorn){selected=id;var s=stars[id];cardtag.textContent=tagBorn?'已为你连接':'已选中';cardtitle.textContent=makeTitle(s.body);cardlinks.innerHTML='';
  var ns=nbr[id];if(ns.length===0){var el=document.createElement('div');el.textContent='还没有连接';el.style.cssText='font-size:11px;color:#8a6a4a;';cardlinks.appendChild(el);}
  ns.slice(0,5).forEach(function(n){var el=document.createElement('div');el.textContent='→ '+stars[n].label;el.style.cssText='font-size:12px;color:#ffd9a0;cursor:pointer;line-height:1.35;';el.onclick=function(ev){ev.stopPropagation();selectStar(n,false);};cardlinks.appendChild(el);});
  cardjump.onclick=function(ev){ev.stopPropagation();startDive(id);};
