@@ -22,7 +22,10 @@ html,body{height:100%;overflow:hidden;background:#0a0711;font-family:-apple-syst
 #snd svg{width:18px;height:18px;}
 #birthtitle{position:absolute;left:0;right:0;top:44%;transform:translateY(-50%);text-align:center;font-size:22px;font-weight:500;color:#fff3da;opacity:0;pointer-events:none;text-shadow:0 2px 24px rgba(255,180,90,.6);padding:0 30px;letter-spacing:.5px;}
 #birthsub{position:absolute;left:0;right:0;top:calc(30px + env(safe-area-inset-top));text-align:center;font-size:12px;color:#ffd9a0;opacity:0;pointer-events:none;letter-spacing:2px;}
-#card{position:absolute;right:14px;bottom:calc(70px + env(safe-area-inset-bottom));width:210px;background:rgba(24,15,28,.9);border:.5px solid rgba(255,190,110,.42);border-radius:12px;padding:13px 15px;opacity:0;transform:translateY(8px);transition:opacity .3s,transform .3s;pointer-events:none;backdrop-filter:blur(7px);}
+#card{position:absolute;right:14px;bottom:calc(70px + env(safe-area-inset-bottom));width:210px;max-height:62vh;overflow-y:auto;background:rgba(24,15,28,.9);border:.5px solid rgba(255,190,110,.42);border-radius:12px;padding:13px 15px;opacity:0;transform:translateY(8px);transition:opacity .3s,transform .3s;pointer-events:none;backdrop-filter:blur(7px);}
+#cardsugg{display:flex;flex-direction:column;gap:5px;margin-bottom:10px;}
+#linkdone{position:absolute;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);display:none;background:rgba(255,180,110,.18);border:.5px solid rgba(255,190,110,.55);border-radius:22px;color:#ffe6b0;font-size:14px;padding:11px 28px;cursor:pointer;backdrop-filter:blur(7px);z-index:7;letter-spacing:2px;white-space:nowrap;}
+#linkdone.show{display:block;}
 #cardlabel{font-size:11px;color:#c89a6a;letter-spacing:1px;margin-bottom:8px;display:flex;align-items:center;gap:6px;}
 #cardlabel span.dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:#ffd9a0;}
 #cardtitle{font-size:14px;font-weight:500;color:#ffe6b0;line-height:1.4;margin-bottom:9px;}
@@ -160,8 +163,11 @@ html,body{height:100%;overflow:hidden;background:#0a0711;font-family:-apple-syst
 <div id="cardtitle"></div>
 <div class="cardsub">连接到</div>
 <div id="cardlinks"></div>
+<div class="cardsub" id="suggsub" style="display:none">建议连接 · 按意思相近</div>
+<div id="cardsugg"></div>
 <div id="cardjump">落到这颗星 ↗</div>
 </div>
+<div id="linkdone">✦ 完成连线</div>
 <div id="addbar">
 <textarea id="newnote" rows="1" placeholder="敲下一个想法,见证它成为一颗星…"></textarea>
 <button id="findbtn">找</button>
@@ -343,7 +349,7 @@ function draw(now){
   var sw=Math.sin(t*s.damp*.1+s.ph)*7,sv=Math.cos(t*s.damp*.08+s.ph)*6;var wx=s.x+sw,wy=s.y+sv;
   if(birth&&birth.wave>0&&birth.star!==s){var ddx=s.x-birth.x,ddy=s.y-birth.y,dd=Math.sqrt(ddx*ddx+ddy*ddy)||1;var push=birth.wave*60/Math.max(60,dd);wx+=ddx/dd*push;wy+=ddy/dd*push;}
   var p=w2s(wx,wy);var tw=.7+.3*Math.sin(t*2+s.ph);if(s.flash>0)s.flash=Math.max(0,s.flash-.02);if(s.born<1&&!(birth&&birth.star===s))s.born=Math.min(1,s.born+.03);if(s.spawn>0)s.spawn=Math.max(0,s.spawn-.018);
-  var sel=s.id===act;var dim=act>=0&&!sel&&nbr[act].indexOf(s.id)<0?.3:1;if(searchHits&&!searchHits[s.id])dim=Math.min(dim,.10);dim*=(1-dimGlobal*.7);
+  var sel=s.id===act;var dim=(act>=0&&!sel&&!linkMode&&nbr[act].indexOf(s.id)<0)?.3:1;if(searchHits&&!searchHits[s.id])dim=Math.min(dim,.10);dim*=(1-dimGlobal*.7);
   var rr=s.r*cam.zoom*(sel?1.6:1)*(1+s.flash*.6)*(.4+.6*s.born);
   var glow=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,rr*5);glow.addColorStop(0,s.col);glow.addColorStop(.25,s.col);glow.addColorStop(1,'rgba(0,0,0,0)');
   ctx.globalAlpha=Math.min(1,(sel?.95:.5)*tw*dim*s.born+s.flash);ctx.fillStyle=glow;ctx.beginPath();ctx.arc(p.x,p.y,rr*5,0,6.28);ctx.fill();
@@ -361,7 +367,7 @@ function draw(now){
  drawn.forEach(function(s){
   var focus=(s.id===act)||(act>=0&&nbr[act].indexOf(s.id)>=0);
   var isHit=searchHits&&searchHits[s.id];
-  if(searchHits){if(!isHit)return;}else if(act>=0){if(!focus)return;}else if(shown>=budget)return;
+  if(searchHits){if(!isHit)return;}else if(act>=0&&!linkMode){if(!focus)return;}else if(shown>=budget)return;
   var lx2=s._sx,ly2=s._sy+s._sr+15,ok=true;
   for(var i=0;i<placed.length;i++){if(Math.abs(placed[i].x-lx2)<54&&Math.abs(placed[i].y-ly2)<15){ok=false;break;}}
   if(!ok&&!focus&&!isHit)return;
@@ -372,7 +378,7 @@ function draw(now){
  /* — 长按蓄力环:按住一颗星时绕它转一圈,转满即进入连线态(让长按可被看见)— */
  if(lpStar>=0&&!linkMode&&drag){var ls=stars[lpStar];if(ls){var lpp=w2s(ls.x,ls.y);var prog=Math.min(1,(now-lpT0)/LP_MS);ctx.globalAlpha=.8;ctx.strokeStyle='rgba(255,225,170,.95)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(lpp.x,lpp.y,ls.r*cam.zoom+10,-1.5708,-1.5708+prog*6.2832);ctx.stroke();ctx.globalAlpha=1;}}
  /* — 连线态:从源星拉一条虚线跟手,悬到目标星上变绿高亮,松开即连 — */
- if(linkMode){var la=stars[linkMode.from];if(la){var lpa=w2s(la.x,la.y),over=linkMode.over>=0;
+ if(linkMode&&linkMode.dragging){var la=stars[linkMode.from];if(la){var lpa=w2s(la.x,la.y),over=linkMode.over>=0;
   ctx.save();ctx.lineCap='round';var tg=ctx.createLinearGradient(lpa.x,lpa.y,linkMode.x,linkMode.y);tg.addColorStop(0,la.col);tg.addColorStop(1,over?'#bfffd6':'#fff2d6');ctx.shadowColor=over?'rgba(140,255,190,.9)':'rgba(255,210,140,.9)';ctx.shadowBlur=14;ctx.strokeStyle=tg;ctx.lineWidth=2.2;ctx.globalAlpha=.95;ctx.beginPath();ctx.moveTo(lpa.x,lpa.y);ctx.lineTo(linkMode.x,linkMode.y);ctx.stroke();ctx.restore();
   ctx.globalAlpha=.55+.45*Math.sin(t*6);ctx.strokeStyle='rgba(255,235,190,.95)';ctx.lineWidth=1.6;ctx.beginPath();ctx.arc(lpa.x,lpa.y,la.r*cam.zoom+9,0,6.28);ctx.stroke();ctx.globalAlpha=1;
   if(over&&stars[linkMode.over]&&stars[linkMode.over]._sx!=null){var ot=stars[linkMode.over];ctx.save();ctx.shadowColor='rgba(140,255,190,.9)';ctx.shadowBlur=12;ctx.strokeStyle='rgba(170,255,200,.95)';ctx.lineWidth=2.2;ctx.beginPath();ctx.arc(ot._sx,ot._sy,ot._sr+9,0,6.28);ctx.stroke();ctx.restore();}
@@ -401,6 +407,11 @@ function selectStar(id,tagBorn){selected=id;var s=stars[id];cardtag.textContent=
   var lab=document.createElement('span');lab.textContent=(isMan?'✦ ':'→ ')+stars[n].label;lab.style.cssText='flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:'+(isMan?'#ffe0a8':'#c89a6a')+';cursor:pointer;';lab.onclick=function(ev){ev.stopPropagation();selectStar(n,false);};el.appendChild(lab);
   if(isMan){var x=document.createElement('span');x.textContent='✕';x.title='断开连线';x.style.cssText='flex:none;font-size:12px;color:#d88;opacity:.75;cursor:pointer;padding:0 4px;';x.onclick=function(ev){ev.stopPropagation();toggleLink(id,n);};el.appendChild(x);}
   cardlinks.appendChild(el);});
+ /* ② 建议连接:向量最像、但还没连的几颗,点 + 即手动连上(连线模式里也可用) */
+ var sg=document.getElementById('cardsugg'),sub=document.getElementById('suggsub');sg.innerHTML='';var cand=[];
+ if(s.vec){var sc=[];stars.forEach(function(o){if(o.id===id||!o.vec)return;if(nbr[id].indexOf(o.id)>=0)return;sc.push({id:o.id,s:dot(s.vec,o.vec)});});sc.sort(function(a,b){return b.s-a.s;});for(var k=0;k<sc.length&&cand.length<4;k++){if(sc[k].s>=0.30)cand.push(sc[k].id);}}
+ if(sub)sub.style.display=cand.length?'':'none';
+ cand.forEach(function(cid){var el=document.createElement('div');el.style.cssText='display:flex;align-items:center;gap:6px;line-height:1.45;';var lab=document.createElement('span');lab.textContent='+ '+stars[cid].label;lab.style.cssText='flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#9fd0b0;cursor:pointer;';lab.onclick=function(ev){ev.stopPropagation();toggleLink(id,cid);};el.appendChild(lab);sg.appendChild(el);});
  cardjump.onclick=function(ev){ev.stopPropagation();startDive(id);};
  card.style.opacity=1;card.style.transform='translateY(0)';card.style.pointerEvents='auto';hint.style.opacity=0;}
 function deselect(){selected=-1;card.style.opacity=0;card.style.transform='translateY(8px)';card.style.pointerEvents='none';}
@@ -461,7 +472,7 @@ document.getElementById('editbtn').addEventListener('click',function(e){e.stopPr
 document.getElementById('delbtn').addEventListener('click',function(e){e.stopPropagation();armDelete();});
 document.getElementById('savebtn').addEventListener('click',function(e){e.stopPropagation();saveEdit();});
 document.getElementById('cancelbtn').addEventListener('click',function(e){e.stopPropagation();cancelEdit();});
-function startDive(id){deselect();diving=true;dive=0;diveTarget=stars[id];}
+function startDive(id){if(linkMode)endLinkMode();deselect();diving=true;dive=0;diveTarget=stars[id];}
 
 var drag=false,dragged=false,lx=0,ly=0,px0=0,py0=0;
 var LP_MS=420,lpTimer=null,lpStar=-1,lpT0=0,linkMode=null;
@@ -473,9 +484,11 @@ var tweens=[];
 function tweenTo(s,nx,ny){for(var i=tweens.length-1;i>=0;i--)if(tweens[i].s===s)tweens.splice(i,1);tweens.push({s:s,fx:s.x,fy:s.y,tx:nx,ty:ny,t:0});}
 function stepTweens(){if(!tweens.length)return;for(var i=tweens.length-1;i>=0;i--){var tw=tweens[i];tw.t=Math.min(1,tw.t+0.05);var k=1-Math.pow(1-tw.t,3);tw.s.x=tw.fx+(tw.tx-tw.fx)*k;tw.s.y=tw.fy+(tw.ty-tw.fy)*k;if(tw.t>=1){try{dbPut(recOf(tw.s));}catch(e){}tweens.splice(i,1);if(!tweens.length)syncPush();}}}
 function busy(){return mode!=='space'||birth;}
-function resetHint(){hint.textContent=stars.length?'拖动 · 缩放 · 轻点星球,再点降落':'敲下第一个想法,点亮第一颗星';hint.style.opacity='';}
-/* 长按一颗星 → 进入连线态;拖到另一颗星松开 = 连线,松回原处/空白 = 取消 */
-function startLinkMode(id){lpTimer=null;if(busy()||id<0||!stars[id])return;drag=false;dragged=true;var s=stars[id];linkMode={from:id,x:s._sx,y:s._sy,over:-1};if(navigator.vibrate)try{navigator.vibrate(12);}catch(e){}try{piano(523.25,.10);}catch(e){}hint.textContent='拖到另一颗星 = 连线 · 松回空白 = 取消';hint.style.opacity='.9';}
+function resetHint(){if(linkMode&&!linkMode.dragging){hint.textContent='轻点其它星连线/断开 · 拖动平移 · 点空白或「完成」结束';hint.style.opacity='.9';return;}hint.textContent=stars.length?'拖动 · 缩放 · 轻点星球,再点降落':'敲下第一个想法,点亮第一颗星';hint.style.opacity='';}
+/* 连线模式:长按一颗星把它钉成 hub。dragging 阶段=初始那一下长按拖线(拖到目标松开=连第一条);松手后转入 sticky 阶段=连着轻点其它星一对多连/断 */
+function startLinkMode(id){lpTimer=null;if(busy()||id<0||!stars[id])return;drag=false;dragged=true;var s=stars[id];linkMode={from:id,x:s._sx,y:s._sy,over:-1,dragging:true};if(navigator.vibrate)try{navigator.vibrate(12);}catch(e){}try{piano(523.25,.10);}catch(e){}hint.textContent='拖到另一颗星 = 连线 · 松手进入连线模式';hint.style.opacity='.9';}
+function enterSticky(){if(!linkMode)return;linkMode.dragging=false;selectStar(linkMode.from,false);var fb=document.getElementById('linkdone');if(fb)fb.classList.add('show');addbar.style.opacity=0;addbar.style.pointerEvents='none';resetHint();}
+function endLinkMode(){linkMode=null;var fb=document.getElementById('linkdone');if(fb)fb.classList.remove('show');deselect();addbar.style.opacity=1;addbar.style.pointerEvents='auto';resetHint();}
 /* 手动连线 = 无向,两端互存 dbId(对删除更稳);已连则再连即断开(取消)。不重排布局——聚类响应是 #3 */
 function toggleLink(ai,bi){var a=stars[ai],b=stars[bi];if(!a||!b)return;a.manual=a.manual||[];b.manual=b.manual||[];
  var existed=a.manual.indexOf(b.dbId)>=0||b.manual.indexOf(a.dbId)>=0;
@@ -488,24 +501,26 @@ function toggleLink(ai,bi){var a=stars[ai],b=stars[bi];if(!a||!b)return;a.manual
  if(selected===ai||selected===bi)selectStar(selected,false);
 }
 function down(e){initAudio();if(busy())return;var p=relPos(e);drag=true;dragged=false;lx=p.x;ly=p.y;px0=p.x;py0=p.y;
+ if(linkMode){if(e.cancelable&&e.type.indexOf('touch')>=0)e.preventDefault();return;}   // sticky 阶段:不再起长按,down 只为判 tap/平移
  lpStar=pick(p.x,p.y);lpT0=performance.now();
  if(lpStar>=0){if(lpTimer)clearTimeout(lpTimer);lpTimer=setTimeout(function(){startLinkMode(lpStar);},LP_MS);}
  if(e.cancelable&&e.type.indexOf('touch')>=0)e.preventDefault();}
 function move(e){var p=relPos(e);
- if(linkMode){linkMode.x=p.x;linkMode.y=p.y;var o=pick(p.x,p.y);linkMode.over=(o===linkMode.from)?-1:o;if(e&&e.cancelable)e.preventDefault();return;}
+ if(linkMode&&linkMode.dragging){linkMode.x=p.x;linkMode.y=p.y;var o=pick(p.x,p.y);linkMode.over=(o===linkMode.from)?-1:o;if(e&&e.cancelable)e.preventDefault();return;}
  if(mode!=='space')return;
  if(drag){if(lpTimer){var mdx=p.x-px0,mdy=p.y-py0;if(mdx*mdx+mdy*mdy>64){clearTimeout(lpTimer);lpTimer=null;lpStar=-1;}}var dx=p.x-lx,dy=p.y-ly;if(Math.abs(dx)+Math.abs(dy)>4)dragged=true;cam.tx-=dx/cam.zoom;cam.ty-=dy/cam.zoom;cam.x-=dx/cam.zoom;cam.y-=dy/cam.zoom;lx=p.x;ly=p.y;}else{var h=pick(p.x,p.y);cv.style.cursor=h>=0?'pointer':'grab';}}
 function up(e){if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}
- if(linkMode){var p=relPos(e);var tgt=pick(p.x,p.y);if(tgt>=0&&tgt!==linkMode.from){toggleLink(linkMode.from,tgt);}else{setStatus('');resetHint();}linkMode=null;lpStar=-1;return;}
+ if(linkMode&&linkMode.dragging){var p=relPos(e);var tgt=pick(p.x,p.y);if(tgt>=0&&tgt!==linkMode.from){toggleLink(linkMode.from,tgt);}enterSticky();lpStar=-1;return;}
+ if(linkMode){if(!dragged){var p=relPos(e);var id=pick(p.x,p.y);if(id>=0&&id!==linkMode.from){toggleLink(linkMode.from,id);}else{endLinkMode();}}drag=false;lpStar=-1;return;}
  lpStar=-1;
  if(busy()){drag=false;return;}if(drag&&!dragged){var p=relPos(e);var id=pick(p.x,p.y);if(id>=0){if(selected===id){startDive(id);}else{selectStar(id,false);}}else{deselect();}clearSearch();}drag=false;}
 cv.addEventListener('mousedown',down);window.addEventListener('mousemove',move);window.addEventListener('mouseup',up);
 cv.addEventListener('touchstart',function(e){down(e.touches[0]);},{passive:false});
-window.addEventListener('touchmove',function(e){if(drag||linkMode){move(e.touches[0]);if(e.cancelable)e.preventDefault();}},{passive:false});
+window.addEventListener('touchmove',function(e){if((drag||linkMode)&&e.touches.length<2){move(e.touches[0]);if(e.cancelable)e.preventDefault();}},{passive:false});
 window.addEventListener('touchend',function(e){up(e.changedTouches[0]);});
 var pinchD=0;
-cv.addEventListener('touchstart',function(e){if(e.touches.length===2&&!linkMode){pinchD=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);drag=false;if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}lpStar=-1;}},{passive:false});
-cv.addEventListener('touchmove',function(e){if(e.touches.length===2&&mode==='space'&&!birth&&!linkMode){var d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);if(pinchD>0){cam.tz=Math.max(.32,Math.min(2.2,cam.tz*(d/pinchD)));cam.zoom=cam.tz;}pinchD=d;if(e.cancelable)e.preventDefault();}},{passive:false});
+cv.addEventListener('touchstart',function(e){if(e.touches.length===2&&!(linkMode&&linkMode.dragging)){pinchD=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);drag=false;if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}lpStar=-1;}},{passive:false});
+cv.addEventListener('touchmove',function(e){if(e.touches.length===2&&mode==='space'&&!birth&&!(linkMode&&linkMode.dragging)){var d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);if(pinchD>0){cam.tz=Math.max(.32,Math.min(2.2,cam.tz*(d/pinchD)));cam.zoom=cam.tz;}pinchD=d;if(e.cancelable)e.preventDefault();}},{passive:false});
 cv.addEventListener('wheel',function(e){if(busy())return;e.preventDefault();var p=relPos(e);var w=s2w(p.x,p.y);var f=Math.exp(-e.deltaY*.0012);cam.tz=Math.max(.32,Math.min(2.2,cam.tz*f));cam.zoom=cam.tz;var w2=s2w(p.x,p.y);cam.tx+=w.x-w2.x;cam.ty+=w.y-w2.y;cam.x=cam.tx;cam.y=cam.ty;},{passive:false});
 
 var adding=false;
@@ -548,6 +563,7 @@ document.getElementById('addbtn').addEventListener('click',submitNote);
 document.getElementById('findbtn').addEventListener('click',function(){var v=noteEl.value.trim();if(!v)return;runSearch(v);noteEl.blur();});
 noteEl.addEventListener('keydown',function(e){if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)){e.preventDefault();submitNote();}});
 document.getElementById('exp').addEventListener('click',function(e){e.stopPropagation();exportNotes();});
+document.getElementById('linkdone').addEventListener('click',function(e){e.stopPropagation();endLinkMode();});
 /* — 连线视觉旋钮:app 内实时滑块,改完即生效 + 存 localStorage — */
 (function(){var tp=document.getElementById('tunepanel');if(!tp)return;
  var vr=document.getElementById('vrange'),mr=document.getElementById('mrange'),gr=document.getElementById('grange');
