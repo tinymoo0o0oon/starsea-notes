@@ -79,6 +79,17 @@ html,body{height:100%;overflow:hidden;background:#0a0711;font-family:-apple-syst
 #status{position:absolute;left:50%;bottom:calc(86px + env(safe-area-inset-bottom));transform:translateX(-50%);font-size:12px;color:#ffd9a0;background:rgba(20,13,24,.85);border:.5px solid rgba(255,190,110,.3);border-radius:10px;padding:7px 14px;opacity:0;transition:opacity .3s;pointer-events:none;backdrop-filter:blur(6px);letter-spacing:.5px;white-space:nowrap;}
 #exp{position:absolute;right:12px;top:calc(56px + env(safe-area-inset-top));width:38px;height:38px;border-radius:10px;background:rgba(20,13,24,.7);border:.5px solid rgba(255,190,110,.3);display:flex;align-items:center;justify-content:center;cursor:pointer;color:#ffd9a0;backdrop-filter:blur(6px);}
 #exp svg{width:17px;height:17px;}
+#tune{position:absolute;right:12px;top:calc(102px + env(safe-area-inset-top));width:38px;height:38px;border-radius:10px;background:rgba(20,13,24,.7);border:.5px solid rgba(255,190,110,.3);display:flex;align-items:center;justify-content:center;cursor:pointer;color:#ffd9a0;backdrop-filter:blur(6px);}
+#tune svg{width:17px;height:17px;}
+#tunepanel{position:absolute;right:12px;top:calc(146px + env(safe-area-inset-top));width:206px;background:rgba(24,15,28,.93);border:.5px solid rgba(255,190,110,.42);border-radius:12px;padding:14px 15px 13px;backdrop-filter:blur(8px);display:none;z-index:6;}
+#tunepanel.show{display:block;}
+#tunepanel .trow{margin-bottom:13px;}
+#tunepanel .trow:last-child{margin-bottom:0;}
+#tunepanel .tlab{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;color:#c89a6a;letter-spacing:.5px;margin-bottom:7px;}
+#tunepanel .tlab b{color:#ffe6b0;font-weight:500;font-size:12px;}
+#tunepanel input[type=range]{width:100%;-webkit-appearance:none;appearance:none;height:3px;border-radius:3px;background:rgba(255,190,110,.25);outline:none;margin:0;}
+#tunepanel input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:#ffd9a0;cursor:pointer;box-shadow:0 0 7px rgba(255,200,120,.75);}
+#tunepanel input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-radius:50%;background:#ffd9a0;cursor:pointer;}
 #noteedit{display:none;}
 #editarea{width:100%;height:34vh;box-sizing:border-box;background:rgba(20,13,24,.5);border:.5px solid rgba(255,255,255,.28);border-radius:12px;padding:14px;color:#fff;font-size:15px;line-height:1.7;outline:none;resize:none;font-family:inherit;}
 #editbar{display:flex;gap:12px;margin-top:12px;justify-content:flex-end;}
@@ -135,6 +146,12 @@ html,body{height:100%;overflow:hidden;background:#0a0711;font-family:-apple-syst
 <div id="hint">拖动 · 缩放 · 轻点星球选中,再点降落</div>
 <div id="snd" title="声音开关" aria-label="声音开关"><svg id="sndsvg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg></div>
 <div id="exp" title="导出备份" aria-label="导出备份"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg></div>
+<div id="tune" title="连线视觉" aria-label="连线视觉"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="8" x2="20" y2="8"/><circle cx="9" cy="8" r="2.4" fill="#0a0711"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="15" cy="16" r="2.4" fill="#0a0711"/></svg></div>
+<div id="tunepanel">
+<div class="trow"><div class="tlab">向量线 亮度 <b id="vval"></b></div><input type="range" id="vrange" min="0" max="0.4" step="0.01"></div>
+<div class="trow"><div class="tlab">手动线 亮度 <b id="mval"></b></div><input type="range" id="mrange" min="0" max="0.4" step="0.01"></div>
+<div class="trow"><div class="tlab">手动线 发光 <b id="gval"></b></div><input type="range" id="grange" min="0" max="10" step="0.5"></div>
+</div>
 <div id="status"></div>
 <div id="birthtitle"></div>
 <div id="birthsub"></div>
@@ -311,10 +328,13 @@ function draw(now){
  var act=selected;
  /* 向量线=淡线无小球;手动线=稍亮 + 略微发光的浮动小球(小球的微动微光标记"你亲手连的")。选中某星时它的连线再亮一档 */
  links.forEach(function(l){var a=stars[l[0]],b=stars[l[1]];if(!a||!b)return;var pa=w2s(a.x,a.y),pb=w2s(b.x,b.y);var on=act>=0&&(l[0]===act||l[1]===act);var man=l[2];var bornA=Math.min(a.born,b.born),fade=1-dimGlobal*.6;
+  ctx.save();
+  if(man&&MAN_GLOW>0){ctx.shadowColor='rgba(255,210,150,.9)';ctx.shadowBlur=on?MAN_GLOW+3:MAN_GLOW;}
   ctx.globalAlpha=bornA*fade*(on?(man?.9:.6):(man?LINE_FAINT_MAN:LINE_FAINT_VEC));
   ctx.strokeStyle=on?'rgba(255,212,148,1)':(man?'rgba(255,210,150,1)':'rgba(255,185,115,1)');
   ctx.lineWidth=on?(man?1.5:1.3):(man?1.0:.7);
-  ctx.beginPath();ctx.moveTo(pa.x,pa.y);ctx.lineTo(pb.x,pb.y);ctx.stroke();ctx.globalAlpha=1;
+  ctx.beginPath();ctx.moveTo(pa.x,pa.y);ctx.lineTo(pb.x,pb.y);ctx.stroke();
+  ctx.restore();ctx.globalAlpha=1;
   if(man){var fl=(t*.35+(l[0]*7+l[1])*.13)%1;var fx=pa.x+(pb.x-pa.x)*fl,fy=pa.y+(pb.y-pa.y)*fl;ctx.save();ctx.shadowColor='rgba(255,225,160,.9)';ctx.shadowBlur=on?7:5;ctx.globalAlpha=bornA*fade*(on?1:.85);ctx.fillStyle='#fff6e2';ctx.beginPath();ctx.arc(fx,fy,on?2.2:1.7,0,6.28);ctx.fill();ctx.restore();ctx.globalAlpha=1;}});
  if(birth&&birth.drawLinks){var bc=w2s(birth.x,birth.y);birth.targets.forEach(function(tg,i){var st=stars[tg];var pp=w2s(st.x,st.y);var prog=Math.max(0,Math.min(1,(birth.linkP-i*.34)/.55));if(prog<=0)return;var ex=bc.x+(pp.x-bc.x)*prog,ey=bc.y+(pp.y-bc.y)*prog;ctx.globalAlpha=.75;ctx.strokeStyle='rgba(255,215,150,.9)';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(bc.x,bc.y);ctx.lineTo(ex,ey);ctx.stroke();ctx.fillStyle='#fff0c8';ctx.beginPath();ctx.arc(ex,ey,2.4,0,6.28);ctx.fill();ctx.globalAlpha=1;if(prog>=1&&!birth.lit[i]){birth.lit[i]=true;st.flash=1;piano(noteScale[Math.min(i,noteScale.length-1)],.18);}});}
 
@@ -423,7 +443,7 @@ function showNote(s){
 }
 /* 内容超出 → 可滚(显横条+底部渐隐);内容没满 → 居中、无横条。点横条在默认高度↔全屏切换 */
 function layoutCard(){function m(){var over=cardscroll.scrollHeight>cardscroll.clientHeight+1;notebody.classList.toggle('scrollable',over);}requestAnimationFrame(m);setTimeout(m,320);}
-function topUtil(show){var ex=document.getElementById('exp');[sndbtn,ex].forEach(function(el){if(!el)return;el.style.opacity=show?'':'0';el.style.pointerEvents=show?'auto':'none';});}
+function topUtil(show){var ex=document.getElementById('exp'),tn=document.getElementById('tune'),tp=document.getElementById('tunepanel');[sndbtn,ex,tn].forEach(function(el){if(!el)return;el.style.opacity=show?'':'0';el.style.pointerEvents=show?'auto':'none';});if(!show&&tp)tp.classList.remove('show');}
 function enterSurface(s){mode='surface';deselect();surfStar=s;notebody.classList.remove('full');cancelEdit();showNote(s);surface.style.opacity=1;surface.style.pointerEvents='auto';hint.style.opacity=0;addbar.style.opacity=0;addbar.style.pointerEvents='none';topUtil(false);if(surfAnim)cancelAnimationFrame(surfAnim);paintSurface(s);}
 function exitSurface(){mode='space';surfStar=null;cancelEdit();topUtil(true);if(surfAnim)cancelAnimationFrame(surfAnim);surface.style.opacity=0;surface.style.pointerEvents='none';addbar.style.opacity=1;addbar.style.pointerEvents='auto';dive=0;cam.tz=.62;}
 document.getElementById('back').addEventListener('click',exitSurface);
@@ -446,7 +466,8 @@ function startDive(id){deselect();diving=true;dive=0;diveTarget=stars[id];}
 var drag=false,dragged=false,lx=0,ly=0,px0=0,py0=0;
 var LP_MS=420,lpTimer=null,lpStar=-1,lpT0=0,linkMode=null;
 var LINK_PULL=0.16;   // 连线后两星各向中点挪的比例(略微靠拢,反馈闭环;不是全局重排)
-var LINE_FAINT_MAN=0.18, LINE_FAINT_VEC=0.10;   // 默认连线存在感:向量=淡线(无小球)、手动=稍亮(+ 略微发光的浮动小球)。手动只比向量稍亮即可
+var LINE_FAINT_MAN=0.18, LINE_FAINT_VEC=0.10, MAN_GLOW=3;   // 连线视觉旋钮(app 内滑块可调,存 localStorage):向量线亮度 / 手动线亮度 / 手动线发光
+try{var _ls=localStorage.getItem('ss_line');if(_ls){_ls=JSON.parse(_ls);if(_ls){if(_ls.vec!=null)LINE_FAINT_VEC=_ls.vec;if(_ls.man!=null)LINE_FAINT_MAN=_ls.man;if(_ls.glow!=null)MAN_GLOW=_ls.glow;}}}catch(e){}
 /* — 局部位置缓动:只动指定星,平滑挪到目标位,跑完即落库同步。不触发全局 relax,避免整片晕动 — */
 var tweens=[];
 function tweenTo(s,nx,ny){for(var i=tweens.length-1;i>=0;i--)if(tweens[i].s===s)tweens.splice(i,1);tweens.push({s:s,fx:s.x,fy:s.y,tx:nx,ty:ny,t:0});}
@@ -527,6 +548,18 @@ document.getElementById('addbtn').addEventListener('click',submitNote);
 document.getElementById('findbtn').addEventListener('click',function(){var v=noteEl.value.trim();if(!v)return;runSearch(v);noteEl.blur();});
 noteEl.addEventListener('keydown',function(e){if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)){e.preventDefault();submitNote();}});
 document.getElementById('exp').addEventListener('click',function(e){e.stopPropagation();exportNotes();});
+/* — 连线视觉旋钮:app 内实时滑块,改完即生效 + 存 localStorage — */
+(function(){var tp=document.getElementById('tunepanel');if(!tp)return;
+ var vr=document.getElementById('vrange'),mr=document.getElementById('mrange'),gr=document.getElementById('grange');
+ var vv=document.getElementById('vval'),mv=document.getElementById('mval'),gv=document.getElementById('gval');
+ function show(){vr.value=LINE_FAINT_VEC;mr.value=LINE_FAINT_MAN;gr.value=MAN_GLOW;vv.textContent=(+LINE_FAINT_VEC).toFixed(2);mv.textContent=(+LINE_FAINT_MAN).toFixed(2);gv.textContent=(+MAN_GLOW).toFixed(1);}
+ function save(){try{localStorage.setItem('ss_line',JSON.stringify({vec:LINE_FAINT_VEC,man:LINE_FAINT_MAN,glow:MAN_GLOW}));}catch(e){}}
+ show();
+ document.getElementById('tune').addEventListener('click',function(e){e.stopPropagation();tp.classList.toggle('show');});
+ vr.addEventListener('input',function(){LINE_FAINT_VEC=parseFloat(vr.value);vv.textContent=LINE_FAINT_VEC.toFixed(2);save();});
+ mr.addEventListener('input',function(){LINE_FAINT_MAN=parseFloat(mr.value);mv.textContent=LINE_FAINT_MAN.toFixed(2);save();});
+ gr.addEventListener('input',function(){MAN_GLOW=parseFloat(gr.value);gv.textContent=MAN_GLOW.toFixed(1);save();});
+})();
 })();
 </script>
 <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(function(){});}</script>
