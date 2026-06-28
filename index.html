@@ -274,11 +274,13 @@ function rebuildGraph(){nbr={};links=[];var byDb={},seen={};stars.forEach(functi
  stars.forEach(function(s,i){(s.manual||[]).forEach(function(did){add(i,byDb[did],true);});});
 }
 /* — 布局:轻量力导,相关的抱团、无关的拉开,跑完即定住(不新增持续运动)。系数已在真实数据上调过;N 很大时可换 Barnes-Hut — */
-var LAY_REP=9000,LAY_LEN=60,LAY_SPRING=0.06,LAY_CENTER=0.012,LAY_STEP=0.85;
+var LAY_REP=9000,LAY_CENTER=0.012,LAY_STEP=0.85;
+/* Obsidian 为核:手动连线=强弹簧(短静止长+大劲,抱紧成团)、向量连线=弱弹簧(长静止长+小劲,只给松散兜底牵引) */
+var LAY_LEN_MAN=42, LAY_SPRING_MAN=0.10, LAY_LEN_VEC=82, LAY_SPRING_VEC=0.028;
 function relax(iters){var n=stars.length;if(n<2)return;var alpha=1;for(var it=0;it<iters;it++){
  for(var i=0;i<n;i++){stars[i]._fx=0;stars[i]._fy=0;}
  for(var i=0;i<n;i++){var a=stars[i];for(var j=i+1;j<n;j++){var b=stars[j];var dx=a.x-b.x,dy=a.y-b.y,d2=dx*dx+dy*dy;if(d2<1)d2=1;var d=Math.sqrt(d2),r=LAY_REP/d2,ux=dx/d,uy=dy/d;a._fx+=ux*r;a._fy+=uy*r;b._fx-=ux*r;b._fy-=uy*r;}}
- links.forEach(function(l){var a=stars[l[0]],b=stars[l[1]];if(!a||!b)return;var dx=b.x-a.x,dy=b.y-a.y,d=Math.sqrt(dx*dx+dy*dy)||1,f=(d-LAY_LEN)*LAY_SPRING,ux=dx/d,uy=dy/d;a._fx+=ux*f;a._fy+=uy*f;b._fx-=ux*f;b._fy-=uy*f;});
+ links.forEach(function(l){var a=stars[l[0]],b=stars[l[1]];if(!a||!b)return;var man=l[2];var len=man?LAY_LEN_MAN:LAY_LEN_VEC,k=man?LAY_SPRING_MAN:LAY_SPRING_VEC;var dx=b.x-a.x,dy=b.y-a.y,d=Math.sqrt(dx*dx+dy*dy)||1,f=(d-len)*k,ux=dx/d,uy=dy/d;a._fx+=ux*f;a._fy+=uy*f;b._fx-=ux*f;b._fy-=uy*f;});
  for(var i=0;i<n;i++){var a=stars[i];a._fx+=-a.x*LAY_CENTER;a._fy+=-a.y*LAY_CENTER;a.x+=a._fx*alpha*LAY_STEP;a.y+=a._fy*alpha*LAY_STEP;}
  alpha*=0.97;
 }}
